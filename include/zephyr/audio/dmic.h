@@ -17,7 +17,6 @@
 #ifndef ZEPHYR_INCLUDE_AUDIO_DMIC_H_
 #define ZEPHYR_INCLUDE_AUDIO_DMIC_H_
 
-
 /**
  * @defgroup audio_interface Audio
  * @{
@@ -48,30 +47,30 @@ extern "C" {
  * DMIC driver states
  */
 enum dmic_state {
-	DMIC_STATE_UNINIT,	/**< Uninitialized */
-	DMIC_STATE_INITIALIZED,	/**< Initialized */
-	DMIC_STATE_CONFIGURED,	/**< Configured */
-	DMIC_STATE_ACTIVE,	/**< Active */
-	DMIC_STATE_PAUSED,	/**< Paused */
-	DMIC_STATE_ERROR,	/**< Error */
+	DMIC_STATE_UNINIT,      /**< Uninitialized */
+	DMIC_STATE_INITIALIZED, /**< Initialized */
+	DMIC_STATE_CONFIGURED,  /**< Configured */
+	DMIC_STATE_ACTIVE,      /**< Active */
+	DMIC_STATE_PAUSED,      /**< Paused */
+	DMIC_STATE_ERROR,       /**< Error */
 };
 
 /**
  * DMIC driver trigger commands
  */
 enum dmic_trigger {
-	DMIC_TRIGGER_STOP,	/**< Stop stream */
-	DMIC_TRIGGER_START,	/**< Start stream */
-	DMIC_TRIGGER_PAUSE,	/**< Pause stream */
-	DMIC_TRIGGER_RELEASE,	/**< Release paused stream */
-	DMIC_TRIGGER_RESET,	/**< Reset stream */
+	DMIC_TRIGGER_STOP,    /**< Stop stream */
+	DMIC_TRIGGER_START,   /**< Start stream */
+	DMIC_TRIGGER_PAUSE,   /**< Pause stream */
+	DMIC_TRIGGER_RELEASE, /**< Release paused stream */
+	DMIC_TRIGGER_RESET,   /**< Reset stream */
 };
 
 /**
  * PDM Channels LEFT / RIGHT
  */
 enum pdm_lr {
-	PDM_CHAN_LEFT,	/**< Left channel */
+	PDM_CHAN_LEFT,  /**< Left channel */
 	PDM_CHAN_RIGHT, /**< Right channel */
 };
 
@@ -182,16 +181,16 @@ struct pdm_chan_cfg {
 	 * @name Requested channel map
 	 * @{
 	 */
-	uint32_t req_chan_map_lo;	/**< Channels 0 to 7 */
-	uint32_t req_chan_map_hi;	/**< Channels 8 to 15 */
+	uint32_t req_chan_map_lo; /**< Channels 0 to 7 */
+	uint32_t req_chan_map_hi; /**< Channels 8 to 15 */
 	/** @} */
 
 	/**
 	 * @name Actual channel map that the driver could configure
 	 * @{
 	 */
-	uint32_t act_chan_map_lo;	/**< Channels 0 to 7 */
-	uint32_t act_chan_map_hi;	/**< Channels 8 to 15 */
+	uint32_t act_chan_map_lo; /**< Channels 0 to 7 */
+	uint32_t act_chan_map_hi; /**< Channels 8 to 15 */
 	/** @} */
 
 	/** Requested number of channels */
@@ -293,11 +292,9 @@ __subsystem struct dmic_driver_api {
  *
  * @return Bit-map containing the PDM and L/R channel information
  */
-static inline uint32_t dmic_build_channel_map(uint8_t channel, uint8_t pdm,
-		enum pdm_lr lr)
+static inline uint32_t dmic_build_channel_map(uint8_t channel, uint8_t pdm, enum pdm_lr lr)
 {
-	return ((((pdm & BIT_MASK(3)) << 1) | lr) <<
-			((channel & BIT_MASK(3)) * 4U));
+	return ((((pdm & BIT_MASK(3)) << 1) | lr) << ((channel & BIT_MASK(3)) * 4U));
 }
 
 /**
@@ -312,8 +309,8 @@ static inline uint32_t dmic_build_channel_map(uint8_t channel, uint8_t pdm,
  * @param pdm Pointer to the PDM hardware controller number
  * @param lr Pointer to the LEFT/RIGHT channel within the PDM controller
  */
-static inline void dmic_parse_channel_map(uint32_t channel_map_lo,
-		uint32_t channel_map_hi, uint8_t channel, uint8_t *pdm, enum pdm_lr *lr)
+static inline void dmic_parse_channel_map(uint32_t channel_map_lo, uint32_t channel_map_hi,
+					  uint8_t channel, uint8_t *pdm, enum pdm_lr *lr)
 {
 	uint32_t channel_map;
 
@@ -321,7 +318,7 @@ static inline void dmic_parse_channel_map(uint32_t channel_map_lo,
 	channel_map >>= ((channel & BIT_MASK(3)) * 4U);
 
 	*pdm = (channel_map >> 1) & BIT_MASK(3);
-	*lr = (enum pdm_lr) (channel_map & BIT(0));
+	*lr = (enum pdm_lr)(channel_map & BIT(0));
 }
 
 /**
@@ -351,8 +348,7 @@ static inline uint32_t dmic_build_clk_skew_map(uint8_t pdm, uint8_t skew)
  *
  * @return 0 on success, a negative error code on failure
  */
-static inline int dmic_configure(const struct device *dev,
-				 struct dmic_cfg *cfg)
+static inline int dmic_configure(const struct device *dev, struct dmic_cfg *cfg)
 {
 	return DEVICE_API_GET(dmic, dev)->configure(dev, cfg);
 }
@@ -367,8 +363,7 @@ static inline int dmic_configure(const struct device *dev,
  *
  * @return 0 on success, a negative error code on failure
  */
-static inline int dmic_trigger(const struct device *dev,
-			       enum dmic_trigger cmd)
+static inline int dmic_trigger(const struct device *dev, enum dmic_trigger cmd)
 {
 	return DEVICE_API_GET(dmic, dev)->trigger(dev, cmd);
 }
@@ -388,9 +383,8 @@ static inline int dmic_trigger(const struct device *dev,
  *
  * @return 0 on success, a negative error code on failure
  */
-static inline int dmic_read(const struct device *dev, uint8_t stream,
-			    void **buffer,
-			    size_t *size, int32_t timeout)
+static inline int dmic_read(const struct device *dev, uint8_t stream, void **buffer, size_t *size,
+			    int32_t timeout)
 {
 	return DEVICE_API_GET(dmic, dev)->read(dev, stream, buffer, size, timeout);
 }

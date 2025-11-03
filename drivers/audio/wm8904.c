@@ -175,12 +175,8 @@ static int wm8904_audio_fmt_config(const struct device *dev, audio_dai_cfg_t *cf
 	return 0;
 }
 
-static int wm8904_out_update(
-	const struct device *dev,
-	audio_channel_t channel,
-	uint16_t val,
-	uint16_t mask
-)
+static int wm8904_out_update(const struct device *dev, audio_channel_t channel, uint16_t val,
+			     uint16_t mask)
 {
 	switch (channel) {
 	case AUDIO_CHANNEL_FRONT_LEFT:
@@ -215,9 +211,8 @@ static int wm8904_out_volume_config(const struct device *dev, audio_channel_t ch
 {
 	/* Set volume values with VU = 0 */
 	const uint16_t val = WM8904_REGVAL_OUT_VOL(0, 0, 1, volume);
-	const uint16_t mask = WM8904_REGMASK_OUT_VU
-		| WM8904_REGMASK_OUT_ZC
-		| WM8904_REGMASK_OUT_VOL;
+	const uint16_t mask =
+		WM8904_REGMASK_OUT_VU | WM8904_REGMASK_OUT_ZC | WM8904_REGMASK_OUT_VOL;
 
 	return wm8904_out_update(dev, channel, val, mask);
 }
@@ -230,12 +225,8 @@ static int wm8904_out_mute_config(const struct device *dev, audio_channel_t chan
 	return wm8904_out_update(dev, channel, val, mask);
 }
 
-static int wm8904_in_update(
-	const struct device *dev,
-	audio_channel_t channel,
-	uint16_t mask,
-	uint16_t val
-)
+static int wm8904_in_update(const struct device *dev, audio_channel_t channel, uint16_t mask,
+			    uint16_t val)
 {
 	switch (channel) {
 	case AUDIO_CHANNEL_FRONT_LEFT:
@@ -279,10 +270,8 @@ static int wm8904_route_input(const struct device *dev, audio_channel_t channel,
 	}
 
 	uint8_t val = WM8904_REGVAL_INSEL(0, input - 1, input - 1, 0);
-	uint8_t mask = WM8904_REGMASK_INSEL_CMENA
-		| WM8904_REGMASK_INSEL_IP_SEL_P
-		| WM8904_REGMASK_INSEL_IP_SEL_N
-		| WM8904_REGMASK_INSEL_MODE;
+	uint8_t mask = WM8904_REGMASK_INSEL_CMENA | WM8904_REGMASK_INSEL_IP_SEL_P |
+		       WM8904_REGMASK_INSEL_IP_SEL_N | WM8904_REGMASK_INSEL_MODE;
 	uint8_t reg;
 
 	switch (channel) {
@@ -580,17 +569,10 @@ static int wm8904_apply_properties(const struct device *dev)
 	 * Set VU = 1 for all output channels, VU takes effect for the whole
 	 * channel pair.
 	 */
-	wm8904_update_reg(
-		dev,
-		WM8904_REG_ANALOG_OUT1_LEFT,
-		WM8904_REGVAL_OUT_VOL(0, 1, 0, 0),
-		WM8904_REGMASK_OUT_MUTE
-	);
-	wm8904_update_reg(dev,
-		WM8904_REG_ANALOG_OUT2_LEFT,
-		WM8904_REGVAL_OUT_VOL(0, 1, 0, 0),
-		WM8904_REGMASK_OUT_MUTE
-	);
+	wm8904_update_reg(dev, WM8904_REG_ANALOG_OUT1_LEFT, WM8904_REGVAL_OUT_VOL(0, 1, 0, 0),
+			  WM8904_REGMASK_OUT_MUTE);
+	wm8904_update_reg(dev, WM8904_REG_ANALOG_OUT2_LEFT, WM8904_REGVAL_OUT_VOL(0, 1, 0, 0),
+			  WM8904_REGMASK_OUT_MUTE);
 
 	return 0;
 }
