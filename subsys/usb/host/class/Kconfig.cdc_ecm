@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 - 2026 NXP
+# SPDX-License-Identifier: Apache-2.0
+
+config USBH_CDC_ECM_CLASS
+	bool "USB Communication Device Class - Ethernet Control Mode (CDC-ECM) support [EXPERIMENTAL]"
+	select EXPERIMENTAL
+	select NET_L2_ETHERNET
+	help
+	  USB Host Communication Device Class - Ethernet Control Mode (CDC-ECM)
+	  implementation. This allows using USB ECM devices (such as USB Ethernet
+	  adapters) as network interfaces.
+
+if USBH_CDC_ECM_CLASS
+
+config USBH_CDC_ECM_ETH_DRV_NAME
+	string "Ethernet interface name prefix"
+	default "zeth"
+	help
+	  This option sets the driver name and name of the network interface
+	  in your host system. If there are multiple network interfaces defined,
+	  then this value is used as a prefix and use "(usbh_cdc_ecm)" as suffix
+	  and the interface names will be "zeth0 (usbh_cdc_ecm)",
+	  "zeth1 (usbh_cdc_ecm)", etc.
+
+config USBH_CDC_ECM_MAX_SEGMENT_SIZE
+	int "Maximum Ethernet frame size"
+	default 1514
+	help
+	  Maximum Ethernet frame size excluding FCS.
+	  - 60: Minimum frame
+	  - 1514: Standard Ethernet (MTU 1500)
+
+	  Actual size negotiated via wMaxSegmentSize in ECM descriptor.
+	  FCS is handled by USB device, not included in transfers.
+
+config USBH_CDC_ECM_MAX_LANGS
+	int "Maximum language IDs to query"
+	default 4
+	range 1 16
+	help
+	  Buffer size for USB language IDs when retrieving MAC address.
+	  Driver tries default LANGID first, then queries alternatives.
+	  Most devices support 1-2 languages, default 4 is sufficient.
+
+config USBH_CDC_ECM_DEFAULT_MAC_ADDR_UNICODE_LANGID
+	hex "Default language ID for MAC address"
+	default 0x0409
+	help
+	  USB LANGID for MAC address string descriptor.
+	  Falls back to device-supported languages if unsupported.
+
+	  Common: 0x0409 (English US), 0x0804 (Chinese Simplified).
+
+config USBH_CDC_ECM_MAX_MULTICAST_FILTERS
+	int "Maximum number of multicast filters"
+	default 32
+	range 4 256
+	help
+	  Maximum multicast MAC addresses tracked per CDC-ECM instance.
+	  Sent to USB device via SET_ETHERNET_MULTICAST_FILTERS request.
+
+	  Memory per instance: N * 6 bytes
+	  - 32 filters: 192 bytes
+	  - 64 filters: 384 bytes
+	  - 128 filters: 768 bytes
+
+	  Actual filters sent to device limited by wNumberMCFilters in
+	  ECM functional descriptor. Most devices support 16-64 filters.
+
+config USBH_CDC_ECM_TX_PIPELINE_DEPTH
+	int "TX pipeline depth"
+	default 1
+	help
+	  Concurrent bulk OUT transfers. Higher values improve throughput
+	  at the cost of memory.
+
+config USBH_CDC_ECM_RX_PIPELINE_DEPTH
+	int "RX pipeline depth"
+	default 1
+	help
+	  Concurrent bulk IN transfers. Higher values reduce packet loss
+	  at the cost of memory.
+
+module = USBH_CDC_ECM
+module-str = "usbh cdc_ecm"
+default-count = 1
+source "subsys/logging/Kconfig.template.log_config"
+source "subsys/usb/common/Kconfig.template.instances_count"
+
+endif # USBH_CDC_ECM_CLASS
