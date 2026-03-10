@@ -181,4 +181,7 @@
 /** USB PHY reference clock identifier. */
 #define MCUX_USBPHY_REF_CLK MCUX_LPC_CLK_ID(0x28, 0x02)
 
+/** OSTIMER peripheral clock identifier. */
+#define MCUX_OSTIMER_CLK MCUX_LPC_CLK_ID(0x29, 0x00)
+
 #endif /* ZEPHYR_INCLUDE_DT_BINDINGS_CLOCK_MCUX_LPC_SYSCON_H_ */
