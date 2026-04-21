@@ -48,3 +48,7 @@ properties:
                                          inside the hardware (low-power)
       Defaults to 0 (base clock) if not specified.
       NOTE: Alarm functionality is only supported with clock-source = 0.
+
+  clock-frequency:
+    type: int
+    description: Clock frequency information for timer operation
