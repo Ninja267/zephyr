@@ -49,7 +49,13 @@ For more information about the MCX-L255 SoC and FRDM-MCXL255 board, see:
 Supported Features
 ==================
 
-.. zephyr:board-supported-hw::
+The FRDM-MCXL255 board configuration supports the following hardware features:
+
++-----------+------------+-------------------------------------+
+| Interface | Controller | Driver/Component                    |
++===========+============+=====================================+
+| CTIMER    | on-chip    | counter                             |
++-----------+------------+-------------------------------------+
 
 Targets available
 ==================

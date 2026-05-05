@@ -51,9 +51,9 @@
         status = "disabled";
         clk-source = <1>;
         clocks = <&syscon MCUX_CTIMER0_CLK>;
-		mode = <0>;
-		input = <0>;
-		prescale = <0>;
+        mode = <0>;
+        input = <0>;
+        prescale = <0>;
     };
 
     ctimer1: ctimer@5000 {
@@ -63,9 +63,9 @@
         status = "disabled";
         clk-source = <1>;
         clocks = <&syscon MCUX_CTIMER1_CLK>;
-		mode = <0>;
-		input = <0>;
-		prescale = <0>;
+        mode = <0>;
+        input = <0>;
+        prescale = <0>;
     };
 
     ctimer2: ctimer@6000 {
@@ -75,8 +75,8 @@
         status = "disabled";
         clk-source = <1>;
         clocks = <&syscon MCUX_CTIMER2_CLK>;
-		mode = <0>;
-		input = <0>;
-		prescale = <0>;
+        mode = <0>;
+        input = <0>;
+        prescale = <0>;
     };
 };
