@@ -17,6 +17,7 @@ Peripherals
    bc12.rst
    biometrics.rst
    clock_control.rst
+   clock_monitor.rst
    can/index.rst
    charger.rst
    comparator.rst
