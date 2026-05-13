@@ -61,7 +61,7 @@ if FILE_SYSTEM_SHELL
 
 config FILE_SYSTEM_SHELL_MOUNT_COMMAND
 	bool "File system shell mount command"
-	depends on FAT_FILESYSTEM_ELM || FILE_SYSTEM_LITTLEFS
+	depends on FAT_FILESYSTEM_ELM || FILE_SYSTEM_LITTLEFS || FILE_SYSTEM_RPMSGFS
 	depends on HEAP_MEM_POOL_SIZE > 0
 	default y
 	help
@@ -127,6 +127,11 @@ config FUSE_LIBRARY_V3
 	  Use the host fuse3 library. This may not be available in older distributions.
 
 endchoice
+
+config FILE_SYSTEM_RPMSGFS
+	bool "RPMSGFS file system support"
+	help
+	  Use RPMSGFS file system to mount remote directories.
 
 endif # FILE_SYSTEM
 
