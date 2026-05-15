@@ -23,6 +23,11 @@
 		zephyr,console = &lpuart3;
 		zephyr,shell-uart = &lpuart3;
 	};
+
+	aliases {
+		i2s-codec-tx = &sai3;
+		i2s-tx = &sai3;
+	};
 };
 
 &emdio {
@@ -164,8 +169,10 @@
 };
 
 &sai3 {
+	mclk-output;
 	pinctrl-0 = <&sai3_default>;
 	pinctrl-names = "default";
+	status = "okay";
 };
 
 &tpm2 {
