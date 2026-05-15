@@ -14,6 +14,7 @@
 #include <zephyr/dt-bindings/clock/imx95_clock.h>
 #include <zephyr/dt-bindings/power/imx95_power.h>
 #include <soc.h>
+#include <zephyr/drivers/gpio.h>
 
 int set_flexcan_clock(uint32_t clk_id)
 {
@@ -249,6 +250,7 @@ DT_FOREACH_STATUS_OKAY(nxp_flexcan, FLEXCAN_CLOCK_SETUP)
 		return ret;
 	}
 #endif /* CONFIG_NXP_SCMI_CPU_DOMAIN_HELPERS */
+
 	return ret;
 }
 
@@ -384,3 +386,23 @@ void pm_state_exit_post_ops(enum pm_state state, uint8_t substate_id)
  * SoC early init and board early init could be run during PRE_KERNEL_2 instead.
  */
 SYS_INIT(soc_init, PRE_KERNEL_2, 0);
+static int soc_init_post_kernel(void)
+{
+	int ret = 0;
+
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(sai3), okay) && DT_NODE_HAS_STATUS(DT_NODELABEL(gpio_exp0), okay)
+	const struct device *gpio_exp0 = DEVICE_DT_GET(DT_NODELABEL(gpio_exp0));
+
+	if (device_is_ready(gpio_exp0)) {
+		/* Configure gpio_exp0 pin 7 (8th pin, 0-indexed) as output low */
+		ret = gpio_pin_configure(gpio_exp0, 7, GPIO_OUTPUT_INACTIVE);
+		if (ret) {
+			return ret;
+		}
+	}
+#endif
+	return ret;
+}
+
+SYS_INIT(soc_init_post_kernel, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+
