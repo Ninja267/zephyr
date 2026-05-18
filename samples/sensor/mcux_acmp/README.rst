@@ -9,7 +9,8 @@ Overview
 
 This sample show how to use the NXP MCUX Analog Comparator (ACMP) driver. The
 sample supports the :zephyr:board:`twr_ke18f`, :zephyr:board:`mimxrt1170_evk`, :zephyr:board:`frdm_ke17z`
-, :zephyr:board:`frdm_ke17z512`, :zephyr:board:`mimxrt1180_evk` and :zephyr:board:`mimxrt700_evk`.
+, :zephyr:board:`frdm_ke17z512`, :zephyr:board:`mimxrt1180_evk`, :zephyr:board:`mimxrt700_evk`
+and :zephyr:board:`frdm_imxrt1186`.
 
 The input voltage for the negative input of the analog comparator is
 provided by the ACMP Digital-to-Analog Converter (DAC). The output value
@@ -76,6 +77,26 @@ ACMP input voltage by changing the voltage input to J45-13.
 .. zephyr-app-commands::
    :zephyr-app: samples/sensor/mcux_acmp
    :board: mimxrt1180_evk/mimxrt1189/cm7
+   :goals: flash
+   :compact:
+
+Building and Running for FRDM-iMXRT1186
+=======================================
+Build the application for the FRDM-iMXRT1186 board, and adjust the
+ACMP input voltage by changing the voltage input to J2-5.
+
+Note: move jumper ``J29`` from ``1-2`` to ``2-3`` to route ``GPIO_AD_29``
+to the Arduino header.
+
+.. zephyr-app-commands::
+   :zephyr-app: samples/sensor/mcux_acmp
+   :board: frdm_imxrt1186/mimxrt1186/cm33
+   :goals: flash
+   :compact:
+
+.. zephyr-app-commands::
+   :zephyr-app: samples/sensor/mcux_acmp
+   :board: frdm_imxrt1186/mimxrt1186/cm7
    :goals: flash
    :compact:
 

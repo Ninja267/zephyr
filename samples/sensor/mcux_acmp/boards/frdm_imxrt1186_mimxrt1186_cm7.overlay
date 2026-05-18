@@ -1,0 +1,28 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2026 NXP
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * GPIO_AD_29 is shared with EWM_OUT_B through function-mux jumper J29.
+ * Move J29 from 1-2 to 2-3 to route GPIO_AD_29 (ACMP3_IN2) to the Arduino
+ * analog header pin J2-5 before running this sample.
+ */
+
+&pinctrl {
+	acmp3_default: acmp3_default {
+		group0 {
+			pinmux = <&iomuxc_gpio_ad_29_acmp3_in2>;
+			drive-strength = "high";
+			bias-pull-up;
+			slew-rate = "fast";
+		};
+	};
+};
+
+&acmp3 {
+	status = "okay";
+	pinctrl-0 = <&acmp3_default>;
+	pinctrl-names = "default";
+};
