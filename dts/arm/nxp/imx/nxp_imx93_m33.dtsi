@@ -138,6 +138,76 @@
 			status = "disabled";
 		};
 
+		lpit1: lpit@442f0000 {
+			compatible = "nxp,lpit";
+			reg = <0x442f0000 0x1000>;
+			interrupts = <15 0>;
+			clocks = <&ccm IMX_CCM_LPIT1_CLK 0x0 0>;
+			max-load-value = <0xffffffff>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			lpit1_channel0: lpit_channel@0 {
+				compatible = "nxp,lpit-channel";
+				reg = <0>;
+				status = "disabled";
+			};
+
+			lpit1_channel1: lpit_channel@1 {
+				compatible = "nxp,lpit-channel";
+				reg = <1>;
+				status = "disabled";
+			};
+
+			lpit1_channel2: lpit_channel@2 {
+				compatible = "nxp,lpit-channel";
+				reg = <2>;
+				status = "disabled";
+			};
+
+			lpit1_channel3: lpit_channel@3 {
+				compatible = "nxp,lpit-channel";
+				reg = <3>;
+				status = "disabled";
+			};
+		};
+
+		lpit2: lpit@424c0000 {
+			compatible = "nxp,lpit";
+			reg = <0x424c0000 0x1000>;
+			interrupts = <64 0>;
+			clocks = <&ccm IMX_CCM_LPIT2_CLK 0x0 0>;
+			max-load-value = <0xffffffff>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			lpit2_channel0: lpit_channel@0 {
+				compatible = "nxp,lpit-channel";
+				reg = <0>;
+				status = "disabled";
+			};
+
+			lpit2_channel1: lpit_channel@1 {
+				compatible = "nxp,lpit-channel";
+				reg = <1>;
+				status = "disabled";
+			};
+
+			lpit2_channel2: lpit_channel@2 {
+				compatible = "nxp,lpit-channel";
+				reg = <2>;
+				status = "disabled";
+			};
+
+			lpit2_channel3: lpit_channel@3 {
+				compatible = "nxp,lpit-channel";
+				reg = <3>;
+				status = "disabled";
+			};
+		};
+
 		iomuxc: iomuxc@443c0000 {
 			compatible = "nxp,imx-iomuxc";
 			reg = <0x443c0000 DT_SIZE_K(64)>;
