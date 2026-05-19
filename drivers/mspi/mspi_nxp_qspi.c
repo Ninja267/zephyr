@@ -13,7 +13,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 #include "fsl_qspi.h"
-#if defined(CONFIG_SOC_SERIES_MCXE24X)
+#if defined(CONFIG_SOC_SERIES_MCXE24X) || defined(CONFIG_SOC_SERIES_MCXE31X)
 #include "fsl_qspi_soc.h"
 #endif
 #include "fsl_clock.h"
@@ -27,6 +27,14 @@ LOG_MODULE_REGISTER(mspi_nxp_qspi, CONFIG_MSPI_LOG_LEVEL);
 #define MSPI_NXP_QSPI_MAX_TX_WORDS      (256 / 4)
 
 /*
+ * MCXE24X QSPI IP returns data with first flash byte in MSB of the 32-bit
+ * IPS register, requiring byte-swap on LE ARM. MCR[END_CFG] exists in the
+ * register map but is non-functional. MCXE31X QSPI IP has no END_CFG field
+ * and uses native LE order.
+ */
+#if defined(CONFIG_SOC_SERIES_MCXE24X)
+#define MSPI_NXP_QSPI_FIFO_BSWAP
+#endif
 
 struct mspi_nxp_qspi_config {
 	QuadSPI_Type *base;
@@ -160,9 +168,11 @@ static int mspi_nxp_qspi_ip_read(QuadSPI_Type *base, uint32_t addr, uint8_t seq_
 		}
 
 		QSPI_ReadBlocking(base, tmp, aligned);
+#ifdef MSPI_NXP_QSPI_FIFO_BSWAP
 		for (uint32_t w = 0; w < aligned / 4U; w++) {
 			tmp[w] = __builtin_bswap32(tmp[w]);
 		}
+#endif
 		memcpy(dst, tmp, chunk);
 		dst += chunk;
 		left -= chunk;
@@ -188,9 +198,11 @@ static int mspi_nxp_qspi_ip_write(QuadSPI_Type *base, uint32_t addr, uint8_t seq
 	/* Pre-build all TX words to minimize per-word overhead during transfer */
 	memset(tx_words, 0xFF, aligned_size);
 	memcpy(tx_words, buf, len);
+#ifdef MSPI_NXP_QSPI_FIFO_BSWAP
 	for (uint32_t i = 0; i < total_words; i++) {
 		tx_words[i] = __builtin_bswap32(tx_words[i]);
 	}
+#endif
 
 	QSPI_ClearFifo(base, kQSPI_TxFifo);
 
@@ -242,6 +254,14 @@ static void mspi_nxp_qspi_soc_configure(QuadSPI_Type *base,
 	QSPI_SocConfigure(base, &cfg);
 	QSPI_Enable(base, true);
 }
+#elif defined(CONFIG_SOC_SERIES_MCXE31X)
+static void mspi_nxp_qspi_soc_configure(QuadSPI_Type *base)
+{
+	qspi_delay_chain_config_t cfg = {0};
+
+	cfg.dqsDelayEnable = true;
+	QSPI_SetDelayChainConfig(base, &cfg);
+}
 #endif
 
 static int mspi_nxp_qspi_config(const struct mspi_dt_spec *spec)
@@ -282,12 +302,16 @@ static int mspi_nxp_qspi_config(const struct mspi_dt_spec *spec)
 
 #if defined(CONFIG_SOC_SERIES_MCXE24X)
 	mspi_nxp_qspi_soc_configure(base, clock_rate, spec->config.max_freq);
+#elif defined(CONFIG_SOC_SERIES_MCXE31X)
+	mspi_nxp_qspi_soc_configure(base);
 #endif
 
 	flash_cfg.flashA1Size = cfg->amba_size;
 	flash_cfg.CSHoldTime = cfg->cs_hold_time;
 	flash_cfg.CSSetupTime = cfg->cs_setup_time;
+#if !defined(FSL_FEATURE_QSPI_HAS_NO_TDH) || (!FSL_FEATURE_QSPI_HAS_NO_TDH)
 	flash_cfg.dataHoldTime = cfg->data_hold_time;
+#endif
 	memset(flash_cfg.lookuptable, 0, sizeof(flash_cfg.lookuptable));
 	QSPI_SetFlashConfig(base, &flash_cfg);
 
