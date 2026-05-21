@@ -46,6 +46,7 @@ config OPENAMP_RSC_TABLE_IPM_TX_ID
 config OPENAMP_VRING_ALIGNMENT
 	int "IPM VRing Alignment"
 	default 16
+	depends on OPENAMP_RSC_TABLE
 	help
 	   Alignment used between the avail and used parts of the vring in the
 	   resource table. This value should be a positive power of two.
