@@ -1,5 +1,6 @@
 /*
  * SPDX-FileCopyrightText: Copyright Nordic Semiconductor ASA
+ * SPDX-FileCopyrightText: Copyright 2025 - 2026 NXP
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -44,6 +45,7 @@ void usbh_device_free(struct usb_device *const udev)
 	sys_dlist_remove(&udev->node);
 	if (udev->cfg_desc != NULL) {
 		k_heap_free(&usb_device_heap, udev->cfg_desc);
+		udev->cfg_desc = NULL;
 	}
 
 	k_mem_slab_free(&usb_device_slab, (void *)udev);
@@ -172,7 +174,7 @@ static int device_interface_modify(struct usb_device *const udev,
 	int err;
 
 	dhp = udev->ifaces[iface].dhp;
-	desc_end = (void *)((uint8_t *)udev->cfg_desc + cfg_desc->wTotalLength);
+	desc_end = (void *)((uint8_t *)cfg_desc + cfg_desc->wTotalLength);
 
 	while (dhp != NULL && (void *)dhp < desc_end) {
 		if (dhp->bDescriptorType == USB_DESC_INTERFACE) {
@@ -283,8 +285,8 @@ static int parse_configuration_descriptor(struct usb_device *const udev)
 	uint8_t tmp_nif = 0;
 	void *desc_end;
 
-	dhp = (void *)((uint8_t *)udev->cfg_desc + cfg_desc->bLength);
-	desc_end = (void *)((uint8_t *)udev->cfg_desc + cfg_desc->wTotalLength);
+	dhp = (void *)((uint8_t *)cfg_desc + cfg_desc->bLength);
+	desc_end = (void *)((uint8_t *)cfg_desc + cfg_desc->wTotalLength);
 
 	while ((void *)dhp < desc_end) {
 		if ((uint8_t *)dhp + sizeof(struct usb_desc_header) > (uint8_t *)desc_end ||
@@ -356,10 +358,10 @@ static void reset_configuration(struct usb_device *const udev)
 	udev->state = USB_STATE_ADDRESSED;
 }
 
-int usbh_device_set_configuration(struct usb_device *const udev, const uint8_t num)
+int usbh_device_get_configuration(struct usb_device *const udev, const uint8_t num,
+				  void **const desc)
 {
 	struct usb_cfg_descriptor cfg_desc;
-	uint8_t idx;
 	int err;
 
 	err = k_mutex_lock(&udev->mutex, K_NO_WAIT);
@@ -368,24 +370,11 @@ int usbh_device_set_configuration(struct usb_device *const udev, const uint8_t n
 		return err;
 	}
 
-	if (udev->actual_cfg == num) {
-		LOG_INF("Already active device configuration");
-		goto error;
-	}
-
 	if (num == 0) {
-		reset_configuration(udev);
-		err = usbh_req_set_cfg(udev, num);
-		if (err) {
-			LOG_ERR("Set Configuration %u request failed", num);
-		}
-
 		goto error;
 	}
 
-	idx = num - 1;
-
-	err = usbh_req_desc_cfg(udev, idx, sizeof(cfg_desc), &cfg_desc);
+	err = usbh_req_desc_cfg(udev, num - 1, sizeof(struct usb_cfg_descriptor), &cfg_desc);
 	if (err) {
 		LOG_ERR("Failed to read configuration %u descriptor", num);
 		goto error;
@@ -409,12 +398,67 @@ int usbh_device_set_configuration(struct usb_device *const udev, const uint8_t n
 		goto error;
 	}
 
-	udev->cfg_desc = k_heap_alloc(&usb_device_heap,
-				      cfg_desc.wTotalLength + sizeof(struct usb_desc_header),
-				      K_NO_WAIT);
-	if (udev->cfg_desc == NULL) {
+	*desc = k_heap_alloc(&usb_device_heap,
+			     cfg_desc.wTotalLength + sizeof(struct usb_desc_header),
+			     K_NO_WAIT);
+	if (*desc == NULL) {
 		LOG_ERR("Failed to allocate memory for configuration descriptor");
 		err = -ENOMEM;
+		goto error;
+	}
+
+	memset(*desc, 0, cfg_desc.wTotalLength + sizeof(struct usb_desc_header));
+
+	err = usbh_req_desc_cfg(udev, num - 1, cfg_desc.wTotalLength, *desc);
+	if (err) {
+		LOG_ERR("Failed to read configuration descriptor of %u bytes: %d",
+			cfg_desc.wTotalLength, err);
+		k_heap_free(&usb_device_heap, *desc);
+		goto error;
+	}
+
+	if (memcmp(*desc, &cfg_desc, sizeof(struct usb_cfg_descriptor))) {
+		LOG_ERR("Configuration descriptor read mismatch");
+		k_heap_free(&usb_device_heap, *desc);
+		goto error;
+	}
+
+error:
+	k_mutex_unlock(&udev->mutex);
+
+	return err;
+}
+
+int usbh_device_set_configuration(struct usb_device *const udev, const uint8_t num,
+				  void *desc)
+{
+	struct usb_cfg_descriptor *cfg_desc = desc;
+	int err;
+
+	err = k_mutex_lock(&udev->mutex, K_NO_WAIT);
+	if (err) {
+		LOG_ERR("Failed to lock USB device");
+		return err;
+	}
+
+	if (udev->actual_cfg == num) {
+		LOG_INF("Already active device configuration");
+		goto error;
+	}
+
+	if (num == 0) {
+		reset_configuration(udev);
+		err = usbh_req_set_cfg(udev, num);
+		if (err) {
+			LOG_ERR("Set Configuration %u request failed", num);
+		}
+
+		goto error;
+	}
+
+	if (cfg_desc == NULL) {
+		LOG_ERR("Invalid configuration %u to set", num);
+		err = -EINVAL;
 		goto error;
 	}
 
@@ -424,27 +468,17 @@ int usbh_device_set_configuration(struct usb_device *const udev, const uint8_t n
 		goto error;
 	}
 
-	memset(udev->cfg_desc, 0, cfg_desc.wTotalLength + sizeof(struct usb_desc_header));
 	if (udev->state == USB_STATE_CONFIGURED) {
 		reset_configuration(udev);
 	}
 
-	err = usbh_req_desc_cfg(udev, idx, cfg_desc.wTotalLength, udev->cfg_desc);
-	if (err) {
-		LOG_ERR("Failed to read configuration descriptor of %u bytes: %d",
-			cfg_desc.wTotalLength, err);
-		k_heap_free(&usb_device_heap, udev->cfg_desc);
-		goto error;
-	}
-
-	if (memcmp(udev->cfg_desc, &cfg_desc, sizeof(cfg_desc))) {
-		LOG_ERR("Configuration descriptor read mismatch");
-		k_heap_free(&usb_device_heap, udev->cfg_desc);
-		goto error;
-	}
-
 	LOG_INF("Configuration %u bNumInterfaces %u",
-		cfg_desc.bConfigurationValue, cfg_desc.bNumInterfaces);
+		cfg_desc->bConfigurationValue, cfg_desc->bNumInterfaces);
+
+	if (udev->cfg_desc != NULL) {
+		k_heap_free(&usb_device_heap, udev->cfg_desc);
+	}
+	udev->cfg_desc = cfg_desc;
 
 	err = parse_configuration_descriptor(udev);
 	if (err) {
@@ -459,6 +493,35 @@ error:
 	k_mutex_unlock(&udev->mutex);
 
 	return err;
+}
+
+static int choose_configuration(struct usb_device *const udev, uint8_t *const num,
+				void **const desc)
+{
+	for (unsigned int i = 0; i < udev->dev_desc.bNumConfigurations; i++) {
+		if (usbh_device_get_configuration(udev, i + 1, desc) != 0) {
+			LOG_ERR("Failed to get configuration %u of new device with address %u",
+				i + 1, udev->addr);
+			continue;
+		}
+
+		if (!usbh_class_match_device(udev, *desc)) {
+			k_heap_free(&usb_device_heap, *desc);
+			continue;
+		}
+
+		*num = i + 1;
+		return 0;
+	}
+
+	if (usbh_device_get_configuration(udev, 1, desc) != 0) {
+		LOG_ERR("Failed to get configuration %u of new device with address %u",
+			1, udev->addr);
+		return -EINVAL;
+	}
+
+	*num = 1;
+	return 0;
 }
 
 int usbh_device_set_address(struct usb_device *const udev, const uint8_t new_addr)
@@ -535,6 +598,8 @@ int usbh_device_init(struct usb_device *const udev)
 {
 	struct usbh_context *const uhs_ctx = udev->ctx;
 	uint8_t new_addr;
+	uint8_t cfg_num;
+	void *cfg_desc;
 	int err;
 
 	if (udev->state != USB_STATE_DEFAULT) {
@@ -597,24 +662,25 @@ int usbh_device_init(struct usb_device *const udev)
 
 	LOG_INF("New device with address %u state %u", udev->addr, udev->state);
 
-	/* FIXME: Avoid multiple setting configuration when device has multiple configurations */
-	/* FIXME: If all configurations are not supported, last configuration is selected */
-	for (unsigned int i = 0; i < udev->dev_desc.bNumConfigurations; i++) {
-		err = usbh_device_set_configuration(udev, i + 1);
-		if (err != 0) {
-			LOG_ERR("Failed to configure new device with address %u", udev->addr);
-			continue;
-		}
-
-		err = usbh_class_probe_device(udev);
-		if (err != 0) {
-			LOG_DBG("Failed to probe device class for configuration %u", i + 1);
-			continue;
-		}
-
-		LOG_INF("Device class probed successfully for configuration %u", i + 1);
-		break;
+	err = choose_configuration(udev, &cfg_num, &cfg_desc);
+	if (err) {
+		goto error;
 	}
+
+	err = usbh_device_set_configuration(udev, cfg_num, cfg_desc);
+	if (err != 0) {
+		LOG_ERR("Failed to configure (index %u) new device with address %u",
+			cfg_num, udev->addr);
+		goto error;
+	}
+
+	err = usbh_class_probe_device(udev);
+	if (err != 0) {
+		LOG_DBG("Failed to probe device class for configuration %u", cfg_num);
+		goto error;
+	}
+
+	LOG_INF("Device class probed successfully for configuration %u", cfg_num);
 
 error:
 	k_mutex_unlock(&udev->mutex);

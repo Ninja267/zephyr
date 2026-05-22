@@ -66,95 +66,127 @@ void usbh_class_remove_all(struct usb_device *const udev)
 }
 
 /*
- * Probe an USB device function against each host class instantiated.
+ * Bind a reserved host class instance to a USB device function.
  *
- * Try to match a class from the global list of all system classes, using their
- * filter rules and return status to tell if a class matches or not.
+ * The class node must be in USBH_CLASS_STATE_RESERVED state, which is
+ * set during the configuration matching phase. This function calls the
+ * class driver's probe callback to perform actual initialization.
  *
- * The first match will stop the loop, and the status will be updated
- * so that classes only match one function at a time.
+ * On success, the class node transitions from RESERVED to BOUND and
+ * gets associated with the USB device.
  *
  * USB functions will have at most one class matching, and calling
  * usbh_class_probe_function() multiple times consequently has no effect.
  */
 static int usbh_class_probe_function(struct usb_device *const udev,
-				     struct usbh_class_filter *const filter_data,
-				     const uint8_t iface)
+				     struct usbh_class_node *const c_node)
 {
+	struct usbh_class_data *const c_data = c_node->c_data;
 	int ret = -ENOTSUP;
 
 	/* Assumes that udev->mutex is locked */
 
-	/* First check if any interface is already bound to this */
-	STRUCT_SECTION_FOREACH(usbh_class_node, c_node) {
-		struct usbh_class_data *const c_data = c_node->c_data;
-
-		if (c_node->state == USBH_CLASS_STATE_BOUND &&
-		    c_data->udev == udev && c_data->iface == iface) {
-			LOG_DBG("Interface %u bound to '%s', skipping",
-				iface, c_data->name);
-			return 0;
-		}
-	}
-
-	/* Then try to match this function against all interfaces */
-	STRUCT_SECTION_FOREACH(usbh_class_node, c_node) {
-		struct usbh_class_data *const c_data = c_node->c_data;
-
-		if (c_node->state != USBH_CLASS_STATE_IDLE) {
-			LOG_DBG("Class %s already matched, skipping",
-				c_data->name);
-			continue;
-		}
-
-		if (!usbh_class_is_matching(c_node->filters, filter_data)) {
-			LOG_DBG("Class %s not matching interface %u",
-				c_data->name, iface);
-			continue;
-		}
-
-		ret = usbh_class_probe(c_data, udev, iface);
+	ret = usbh_class_probe(c_data, udev, c_data->iface);
+	if (ret != 0) {
 		if (ret == -ENOTSUP) {
-			LOG_DBG("Class %s not supporting this function, skipping",
-				c_data->name);
-			continue;
+			LOG_DBG("Class %s not supporting this function, skipping", c_data->name);
 		}
-		if (ret != 0) {
-			break;
-		}
-
-		LOG_INF("Class '%s' matches interface %u", c_data->name, iface);
-		c_node->state = USBH_CLASS_STATE_BOUND;
-		c_data->udev = udev;
-		c_data->iface = iface;
-		break;
+		return ret;
 	}
+
+	LOG_INF("Class '%s' matches interface %u", c_data->name, c_data->iface);
+	c_node->state = USBH_CLASS_STATE_BOUND;
 
 	return ret;
 }
 
 int usbh_class_probe_device(struct usb_device *const udev)
 {
-	const struct usb_desc_header *desc = udev->cfg_desc;
-	struct usbh_class_filter filter_data;
-	uint8_t iface;
-	bool class_probed = false;
-	int ret;
+	int ret = -ENOTSUP;
+	bool err = false;
 
-	/* To support single-function devices, match against the entire device */
+	STRUCT_SECTION_FOREACH(usbh_class_node, c_node) {
+		struct usbh_class_data *const c_data = c_node->c_data;
+
+		if (c_node->state != USBH_CLASS_STATE_RESERVED) {
+			continue;
+		}
+
+		if (c_data->udev != udev) {
+			continue;
+		}
+
+		ret = usbh_class_probe_function(udev, c_node);
+		if (ret != 0) {
+			if (ret != -ENOTSUP) {
+				err = true;
+			}
+			c_node->state = USBH_CLASS_STATE_IDLE;
+			c_data->udev = NULL;
+			c_data->iface = 0;
+		}
+	}
+
+	return err ? -EINVAL : ret;
+}
+
+/*
+ * Match the first idle class instance matching a USB device function.
+ *
+ * Iterate through all registered class nodes and find the first one that
+ * is in USBH_CLASS_STATE_IDLE state and whose filter rules match the
+ * given filter data. On match, the class node transitions to
+ * USBH_CLASS_STATE_RESERVED and records the interface number.
+ *
+ * This is used during configuration matching to simulate driver allocation
+ * without actually binding. The reservation can later be:
+ *   - Promoted to BOUND by usbh_class_probe_function()
+ *   - Rolled back to IDLE by usbh_class_probe_device() if class probes failed
+ */
+static struct usbh_class_node *
+usbh_class_match_function(struct usb_device *const udev,
+			  struct usbh_class_filter *const filter_data,
+			  const uint8_t iface)
+{
+	STRUCT_SECTION_FOREACH(usbh_class_node, c_node) {
+		struct usbh_class_data *const c_data = c_node->c_data;
+
+		if (c_node->state != USBH_CLASS_STATE_IDLE) {
+			LOG_DBG("Class %s already matched, skipping", c_data->name);
+			continue;
+		}
+
+		if (!usbh_class_is_matching(c_node->filters, filter_data)) {
+			LOG_DBG("Class %s not matching interface %u", c_data->name, iface);
+			continue;
+		}
+
+		c_node->state = USBH_CLASS_STATE_RESERVED;
+		c_data->iface = iface;
+		c_data->udev = udev;
+		return c_node;
+	}
+
+	return NULL;
+}
+
+bool usbh_class_match_device(struct usb_device *const udev, const void *cfg_desc)
+{
+	const struct usb_desc_header *desc = cfg_desc;
+	struct usbh_class_node *c_node;
+	struct usbh_class_filter filter_data;
+	bool match = false;
+	uint8_t iface;
 
 	filter_data.vid = udev->dev_desc.idVendor;
 	filter_data.pid = udev->dev_desc.idProduct;
 	filter_data.class = udev->dev_desc.bDeviceClass;
 	filter_data.sub = udev->dev_desc.bDeviceSubClass;
 	filter_data.proto = udev->dev_desc.bDeviceProtocol;
-
-	ret = usbh_class_probe_function(udev, &filter_data, USBH_CLASS_IFNUM_DEVICE);
-	if (ret == 0 || ret != -ENOTSUP) {
-		return ret;
+	c_node = usbh_class_match_function(udev, &filter_data, USBH_CLASS_IFNUM_DEVICE);
+	if (c_node != NULL) {
+		match = true;
 	}
-
-	/* To support multi-function devices, match against each function */
 
 	while (true) {
 		desc = usbh_desc_get_next_function(desc);
@@ -162,20 +194,18 @@ int usbh_class_probe_device(struct usb_device *const udev)
 			break;
 		}
 
-		ret = usbh_desc_fill_filter(desc, &filter_data, &iface);
-		if (ret != 0) {
-			LOG_ERR("Failed to collect class codes for matching interface %u",
-				iface);
+		if (usbh_desc_fill_filter(desc, &filter_data, &iface) != 0) {
+			LOG_ERR("Failed to collect class codes for matching interface %u", iface);
 			continue;
 		}
 
-		ret = usbh_class_probe_function(udev, &filter_data, iface);
-		if (ret == 0) {
-			class_probed = true;
+		c_node = usbh_class_match_function(udev, &filter_data, iface);
+		if (c_node != NULL) {
+			match = true;
 		}
 	}
 
-	return class_probed ? 0 : -ENOTSUP;
+	return match;
 }
 
 bool usbh_class_is_matching(const struct usbh_class_filter *const filter_rules,
