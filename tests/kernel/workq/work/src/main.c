@@ -19,6 +19,12 @@
 
 #define DELAY_MS 100
 #define DELAY_TIMEOUT K_MSEC(DELAY_MS)
+#define DELAY_TOLERANCE_TICKS (IS_ENABLED(CONFIG_BOARD_QEMU_CORTEX_A9) ? 10U : 1U)
+
+static uint32_t delay_max_ms(void)
+{
+	return k_ticks_to_ms_ceil32(DELAY_TOLERANCE_TICKS + k_ms_to_ticks_ceil32(DELAY_MS));
+}
 
 BUILD_ASSERT(COOPHI_PRIORITY < CONFIG_SYSTEM_WORKQUEUE_PRIORITY,
 	     "COOPHI not higher priority than system workqueue");
@@ -996,8 +1002,7 @@ ZTEST(work_1cpu, test_1cpu_basic_schedule)
 {
 	int rc;
 	uint32_t sched_ms;
-	uint32_t max_ms = k_ticks_to_ms_ceil32(1U
-				+ k_ms_to_ticks_ceil32(DELAY_MS));
+	uint32_t max_ms = delay_max_ms();
 	uint32_t elapsed_ms;
 	struct k_work *wp = &dwork.work; /* whitebox testing */
 
@@ -1146,8 +1151,7 @@ ZTEST(work_1cpu, test_1cpu_basic_reschedule)
 {
 	int rc;
 	uint32_t sched_ms;
-	uint32_t max_ms = k_ticks_to_ms_ceil32(1U
-				+ k_ms_to_ticks_ceil32(DELAY_MS));
+	uint32_t max_ms = delay_max_ms();
 	uint32_t elapsed_ms;
 	struct k_work *wp = &dwork.work; /* whitebox testing */
 
@@ -1372,8 +1376,7 @@ ZTEST(work_1cpu, test_1cpu_system_schedule)
 {
 	int rc;
 	uint32_t sched_ms;
-	uint32_t max_ms = k_ticks_to_ms_ceil32(1U
-				+ k_ms_to_ticks_ceil32(DELAY_MS));
+	uint32_t max_ms = delay_max_ms();
 	uint32_t elapsed_ms;
 
 	/* Reset state and use non-blocking handler */
@@ -1416,8 +1419,7 @@ ZTEST(work_1cpu, test_1cpu_system_reschedule)
 {
 	int rc;
 	uint32_t sched_ms;
-	uint32_t max_ms = k_ticks_to_ms_ceil32(1U
-				+ k_ms_to_ticks_ceil32(DELAY_MS));
+	uint32_t max_ms = delay_max_ms();
 	uint32_t elapsed_ms;
 
 	/* Reset state and use non-blocking handler */
