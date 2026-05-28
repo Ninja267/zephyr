@@ -73,10 +73,17 @@
 /**
  * @struct mp_structure
  * @brief Dynamic structure for holding named fields and values.
+ *
+ * @note Heap-backed structures (created with @ref mp_structure_new) are taken
+ * from a static pool sized by @kconfig{CONFIG_MP_STRUCTURE_POOL_SIZE}; their
+ * fields come from @kconfig{CONFIG_MP_STRUCTURE_FIELD_POOL_SIZE}. A structure
+ * may also be embedded by value and initialized with @ref mp_structure_init.
  */
 struct mp_structure {
 	/** List of fields in the structure */
 	sys_slist_t fields;
+	/** Node used to link the structure into a @ref mp_caps list */
+	sys_snode_t node;
 	/** Media type ID of the structure */
 	uint8_t media_type_id;
 };
@@ -90,7 +97,7 @@ struct mp_structure {
  * - `int type`
  * - One or more values depending on the type
  *
- * The list must be terminated by a `0` field ID. The number and type of
+ * The list must be terminated by the @ref MP_CAPS_END field ID. The number and type of
  * arguments for each field depend on the field's type with the same rule as @ref mp_value_new()),
  * except for the MP_TYPE_LIST which requires one argument which is a pre-created mp_value list.
  *
@@ -115,7 +122,10 @@ void mp_structure_init(struct mp_structure *structure, uint8_t media_type_id);
  *
  * @param structure Structure to append the field to.
  * @param field_id Field ID (field ID must be unique)
- * @param value Field value (the value will be copied)
+ * @param value Field value. Ownership is transferred to the structure: the
+ *              value is released when the structure is cleared or destroyed.
+ *              If the field cannot be added (e.g. the field pool is exhausted),
+ *              the value is released immediately.
  */
 void mp_structure_append(struct mp_structure *structure, uint8_t field_id, struct mp_value *value);
 

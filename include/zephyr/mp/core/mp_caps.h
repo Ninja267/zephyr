@@ -27,7 +27,7 @@ struct mp_structure;
  *
  * CAPS is an object represents the supported media formats (e.g., audio, video) and
  * data formats (e.g., codec, resolution, framerate) of an element. Each caps
- * object consists of one or more @ref mp_cap_structure, where each of them describes
+ * object consists of one or more @ref mp_structure, where each of them describes
  * a specific capability.
  *
  * @{
@@ -92,24 +92,14 @@ enum {
  *
  * @brief Represents a list of media capabilities.
  *
+ * The capability structures are linked directly through the @ref mp_structure
+ * intrusive node, so no per-structure wrapper is allocated. Caps objects are
+ * reference counted and taken from a static pool sized by
+ * @kconfig{CONFIG_MP_CAPS_POOL_SIZE}.
  */
 struct mp_caps {
 	struct mp_object object;     /**< Base object */
-	sys_slist_t caps_structures; /**< List of capability structures */
-};
-
-/**
- * @struct mp_cap_structure
- * @brief structure used to hold a single capability structure.
- *
- * Each caps structure has:
- * - A media type ID: Specifies the nature (e.g., video, audio) and format type (e.g., raw,
- * compressed) of the media stream.
- * - A set of field–value pairs: Each pair represents a specific capability of the element.
- */
-struct mp_cap_structure {
-	sys_snode_t node;               /**< Linked list node */
-	struct mp_structure *structure; /**< Pointer to the capability structure */
+	sys_slist_t caps_structures; /**< List of @ref mp_structure capability structures */
 };
 
 /** @brief Flag indicating ANY caps type */

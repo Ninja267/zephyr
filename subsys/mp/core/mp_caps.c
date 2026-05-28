@@ -5,27 +5,32 @@
  */
 
 #include <stdarg.h>
-#include <string.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
 #include <zephyr/mp/core/mp_caps.h>
 #include <zephyr/mp/core/mp_structure.h>
 #include <zephyr/mp/core/mp_object.h>
 
+LOG_MODULE_REGISTER(mp_caps, CONFIG_MP_LOG_LEVEL);
+
+/* Static caps pool: reference-counted caps objects without heap usage. */
+K_MEM_SLAB_DEFINE_STATIC(mp_caps_slab, ROUND_UP(sizeof(struct mp_caps), sizeof(void *)),
+			 CONFIG_MP_CAPS_POOL_SIZE, sizeof(void *));
+
 static void mp_caps_destroy(struct mp_object *obj)
 {
-	struct mp_cap_structure *caps_structure;
+	struct mp_structure *structure;
+	sys_snode_t *node;
 
 	__ASSERT_NO_MSG(obj != NULL);
-	while (!sys_slist_is_empty(&MP_CAPS(obj)->caps_structures)) {
-		caps_structure = CONTAINER_OF(sys_slist_get(&MP_CAPS(obj)->caps_structures),
-					      struct mp_cap_structure, node);
-
-		mp_structure_destroy(caps_structure->structure);
-		k_free(caps_structure);
+	while ((node = sys_slist_get(&MP_CAPS(obj)->caps_structures)) != NULL) {
+		structure = CONTAINER_OF(node, struct mp_structure, node);
+		mp_structure_destroy(structure);
 	}
-	k_free(obj);
+	k_mem_slab_free(&mp_caps_slab, obj);
 }
 
 void mp_caps_init(struct mp_caps *caps, uint8_t flag)
@@ -39,9 +44,11 @@ void mp_caps_init(struct mp_caps *caps, uint8_t flag)
 
 static struct mp_caps *mp_caps_new_empty_with_flag(uint8_t flags)
 {
-	struct mp_caps *caps = k_malloc(sizeof(struct mp_caps));
+	struct mp_caps *caps;
 
-	if (caps == NULL) {
+	if (k_mem_slab_alloc(&mp_caps_slab, (void **)&caps, K_NO_WAIT) != 0) {
+		LOG_ERR("mp_caps pool exhausted (CONFIG_MP_CAPS_POOL_SIZE=%d)",
+			CONFIG_MP_CAPS_POOL_SIZE);
 		return NULL;
 	}
 
@@ -68,12 +75,20 @@ struct mp_caps *mp_caps_new(uint8_t media_type_id, ...)
 	enum mp_value_type type;
 	struct mp_value *value;
 
+	if (caps == NULL) {
+		return NULL;
+	}
+
 	if (media_type_id == MP_MEDIA_END) {
 		return caps;
 	}
 
-	va_start(var_args, media_type_id);
 	structure = mp_structure_new(media_type_id, MP_CAPS_END);
+	if (structure == NULL) {
+		return caps;
+	}
+
+	va_start(var_args, media_type_id);
 	while (1) {
 		field_id = (uint8_t)va_arg(var_args, uint32_t);
 		if (field_id == MP_CAPS_END) {
@@ -93,8 +108,9 @@ struct mp_caps *mp_caps_new(uint8_t media_type_id, ...)
 
 		mp_structure_append(structure, field_id, value);
 	}
-	mp_caps_append(caps, structure);
 	va_end(var_args);
+
+	mp_caps_append(caps, structure);
 
 	return caps;
 }
@@ -114,26 +130,18 @@ void mp_caps_replace(struct mp_caps **target_caps, struct mp_caps *new_caps)
 
 bool mp_caps_append(struct mp_caps *caps, struct mp_structure *structure)
 {
-	struct mp_cap_structure *cs;
-
-	if (caps == NULL || caps->object.flags == MP_CAPS_FLAG_ANY || !structure) {
+	if (caps == NULL || caps->object.flags == MP_CAPS_FLAG_ANY || structure == NULL) {
 		return false;
 	}
 
-	cs = k_malloc(sizeof(struct mp_cap_structure));
-	if (cs == NULL) {
-		return false;
-	}
-
-	cs->structure = structure;
-	sys_slist_append(&caps->caps_structures, &cs->node);
+	sys_slist_append(&caps->caps_structures, &structure->node);
 
 	return true;
 }
 
 void mp_caps_print(struct mp_caps *caps)
 {
-	struct mp_cap_structure *cs;
+	struct mp_structure *structure;
 
 	if (caps == NULL) {
 		printk("Caps NULL\n");
@@ -150,8 +158,8 @@ void mp_caps_print(struct mp_caps *caps)
 		return;
 	}
 
-	SYS_SLIST_FOR_EACH_CONTAINER(&caps->caps_structures, cs, node) {
-		mp_structure_print(cs->structure);
+	SYS_SLIST_FOR_EACH_CONTAINER(&caps->caps_structures, structure, node) {
+		mp_structure_print(structure);
 	}
 }
 
@@ -188,7 +196,7 @@ bool mp_caps_is_fixed(struct mp_caps *caps)
 struct mp_caps *mp_caps_intersect(struct mp_caps *caps1, struct mp_caps *caps2)
 {
 	struct mp_caps *intersect_caps;
-	struct mp_cap_structure *cs1, *cs2;
+	struct mp_structure *cs1, *cs2;
 
 	if (caps1 == NULL || caps2 == NULL || mp_caps_is_empty(caps1) || mp_caps_is_empty(caps2)) {
 		return NULL;
@@ -203,10 +211,13 @@ struct mp_caps *mp_caps_intersect(struct mp_caps *caps1, struct mp_caps *caps2)
 	}
 
 	intersect_caps = mp_caps_new_empty();
+	if (intersect_caps == NULL) {
+		return NULL;
+	}
+
 	SYS_SLIST_FOR_EACH_CONTAINER(&caps1->caps_structures, cs1, node) {
 		SYS_SLIST_FOR_EACH_CONTAINER(&caps2->caps_structures, cs2, node) {
-			struct mp_structure *struct_intersect =
-				mp_structure_intersect(cs1->structure, cs2->structure);
+			struct mp_structure *struct_intersect = mp_structure_intersect(cs1, cs2);
 
 			if (struct_intersect) {
 				mp_caps_append(intersect_caps, struct_intersect);
@@ -220,7 +231,7 @@ struct mp_caps *mp_caps_intersect(struct mp_caps *caps1, struct mp_caps *caps2)
 bool mp_caps_can_intersect(struct mp_caps *caps1, struct mp_caps *caps2)
 {
 
-	struct mp_cap_structure *cs1, *cs2;
+	struct mp_structure *cs1, *cs2;
 
 	if (caps1 == NULL || caps2 == NULL || mp_caps_is_empty(caps1) || mp_caps_is_empty(caps2)) {
 		return false;
@@ -232,7 +243,7 @@ bool mp_caps_can_intersect(struct mp_caps *caps1, struct mp_caps *caps2)
 
 	SYS_SLIST_FOR_EACH_CONTAINER(&caps1->caps_structures, cs1, node) {
 		SYS_SLIST_FOR_EACH_CONTAINER(&caps2->caps_structures, cs2, node) {
-			if (mp_structure_can_intersect(cs1->structure, cs2->structure)) {
+			if (mp_structure_can_intersect(cs1, cs2)) {
 				return true;
 			}
 		}
@@ -243,7 +254,7 @@ bool mp_caps_can_intersect(struct mp_caps *caps1, struct mp_caps *caps2)
 
 struct mp_caps *mp_caps_duplicate(struct mp_caps *caps)
 {
-	struct mp_cap_structure *cs;
+	struct mp_structure *cs;
 	struct mp_structure *structure;
 	struct mp_caps *caps_copy;
 
@@ -256,8 +267,12 @@ struct mp_caps *mp_caps_duplicate(struct mp_caps *caps)
 	}
 
 	caps_copy = mp_caps_new_empty();
+	if (caps_copy == NULL) {
+		return NULL;
+	}
+
 	SYS_SLIST_FOR_EACH_CONTAINER(&caps->caps_structures, cs, node) {
-		structure = mp_structure_duplicate(cs->structure);
+		structure = mp_structure_duplicate(cs);
 		if (structure) {
 			mp_caps_append(caps_copy, structure);
 		}
@@ -269,11 +284,11 @@ struct mp_caps *mp_caps_duplicate(struct mp_caps *caps)
 struct mp_structure *mp_caps_get_structure(struct mp_caps *caps, int index)
 {
 	int i = 0;
-	struct mp_cap_structure *cs;
+	struct mp_structure *cs;
 
 	SYS_SLIST_FOR_EACH_CONTAINER(&caps->caps_structures, cs, node) {
 		if (i++ == index) {
-			return cs->structure;
+			return cs;
 		}
 	}
 
@@ -285,21 +300,26 @@ struct mp_caps *mp_caps_fixate(struct mp_caps *caps)
 	sys_snode_t *node;
 	struct mp_caps *fixed_caps;
 	struct mp_structure *fixated_structure;
-	struct mp_cap_structure *cs;
+	struct mp_structure *cs;
 
 	if (caps == NULL || mp_caps_is_any(caps) || mp_caps_is_empty(caps)) {
 		return NULL;
 	}
 
-	fixed_caps = mp_caps_new_empty();
 	node = sys_slist_peek_head(&caps->caps_structures);
 	if (node == NULL) {
 		return NULL;
 	}
 
-	cs = CONTAINER_OF(node, struct mp_cap_structure, node);
-	fixated_structure = mp_structure_fixate(cs->structure);
+	fixed_caps = mp_caps_new_empty();
+	if (fixed_caps == NULL) {
+		return NULL;
+	}
+
+	cs = CONTAINER_OF(node, struct mp_structure, node);
+	fixated_structure = mp_structure_fixate(cs);
 	if (fixated_structure == NULL) {
+		mp_caps_unref(fixed_caps);
 		return NULL;
 	}
 

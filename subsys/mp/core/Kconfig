@@ -56,3 +56,44 @@ config MP_CAPSFILTER
 config MP_NET_BUF_POOL_COUNT
 	int "Number of buffers can be handled at the same time for the whole pipeline"
 	default 1
+
+menu "Caps negotiation memory pools"
+
+comment "Capabilities, structures and values are allocated from statically sized"
+comment "pools instead of the system heap. Tune these for the pipeline complexity."
+
+config MP_VALUE_POOL_SIZE
+	int "Maximum number of mp_value objects"
+	default 128
+	range 1 65535
+	help
+	  Number of value slots available across all capabilities, structures
+	  and value lists at any given time. A single value, list element,
+	  range or fraction each consume one slot.
+
+config MP_STRUCTURE_POOL_SIZE
+	int "Maximum number of mp_structure objects"
+	default 16
+	range 1 65535
+	help
+	  Number of heap-backed mp_structure objects (those created with
+	  mp_structure_new) available at any given time. Structures embedded
+	  by value (for example inside mp_query) do not consume a slot.
+
+config MP_STRUCTURE_FIELD_POOL_SIZE
+	int "Maximum number of mp_structure fields"
+	default 64
+	range 1 65535
+	help
+	  Number of field entries shared by all structures at any given time.
+	  Each field-value pair in a structure consumes one entry.
+
+config MP_CAPS_POOL_SIZE
+	int "Maximum number of mp_caps objects"
+	default 16
+	range 1 65535
+	help
+	  Number of reference-counted mp_caps objects available at any given
+	  time, including transient caps created during negotiation.
+
+endmenu
