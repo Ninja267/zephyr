@@ -66,21 +66,37 @@ struct mp_query {
 };
 
 /**
- * Destroy a query and its associated resources.
+ * @brief Initialize a query as a capabilities query.
  *
- * @param query Pointer to the @ref mp_query to destroy
+ * The query is initialized in place; no dynamic allocation is performed for
+ * the query itself.
+ *
+ * @param query Pointer to caller-provided storage for the @ref mp_query
+ * @param caps Pointer to @ref mp_caps to include in the query
  */
-void mp_query_destroy(struct mp_query *query);
+void mp_query_init_caps(struct mp_query *query, struct mp_caps *caps);
 
 /**
- * @brief Create a new capabilities query
+ * @brief Initialize a query as an allocation query.
  *
- * Creates a query for negotiating media capabilities between elements.
+ * The query is initialized in place; no dynamic allocation is performed for
+ * the query itself.
  *
- * @param caps Pointer to @ref mp_caps to include in the query
- * @return Pointer to newly created @ref mp_query, or NULL on allocation failure
+ * @param query Pointer to caller-provided storage for the @ref mp_query
+ * @param caps Pointer to @ref mp_caps describing the media format for allocation
  */
-struct mp_query *mp_query_new_caps(struct mp_caps *caps);
+void mp_query_init_allocation(struct mp_query *query, struct mp_caps *caps);
+
+/**
+ * @brief Release resources held by a query.
+ *
+ * Releases the query's internal references and clears its associated
+ * structure. The @p query storage itself is not freed (it may be reused via
+ * another mp_query_init_*() call).
+ *
+ * @param query Pointer to the @ref mp_query to clear
+ */
+void mp_query_clear(struct mp_query *query);
 
 /**
  * @brief Set capabilities in a capabilities query
@@ -103,18 +119,6 @@ bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps);
  * @return Pointer to @ref mp_caps if available, or NULL if not found or wrong type
  */
 struct mp_caps *mp_query_get_caps(struct mp_query *query);
-
-/**
- * @brief Create a new allocation query
- *
- * Creates a query for negotiating buffer allocation parameters. This query
- * is used to establish buffer pools, memory requirements, and allocation
- * strategies between pipeline elements.
- *
- * @param caps Pointer to @ref mp_caps describing the media format for allocation
- * @return Pointer to newly created @ref mp_query, or NULL on allocation failure
- */
-struct mp_query *mp_query_new_allocation(struct mp_caps *caps);
 
 /**
  * @brief Set buffer pool in an allocation query

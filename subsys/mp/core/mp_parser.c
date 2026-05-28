@@ -140,18 +140,22 @@ static bool mp_parser_query(struct mp_pad *pad, struct mp_query *query)
 	case MP_QUERY_CAPS:
 		return mp_parser_query_caps(parser, pad->direction, query);
 	case MP_QUERY_ALLOCATION:
-		struct mp_query *peer_query = mp_query_new_allocation(parser->srcpad.caps);
+		struct mp_query peer_query;
+
+		mp_query_init_allocation(&peer_query, parser->srcpad.caps);
 
 		/* Query the downstream */
-		if (!mp_pad_query(parser->srcpad.peer, peer_query)) {
-			mp_query_destroy(peer_query);
+		if (!mp_pad_query(parser->srcpad.peer, &peer_query)) {
+			mp_query_clear(&peer_query);
 			return false;
 		}
 
-		if (!parser->decide_allocation(parser, peer_query)) {
-			mp_query_destroy(peer_query);
+		if (!parser->decide_allocation(parser, &peer_query)) {
+			mp_query_clear(&peer_query);
 			return false;
 		}
+
+		mp_query_clear(&peer_query);
 
 		/* Configure/start the output buffer pool */
 		if (parser->outpool != NULL && !parser->outpool->started) {

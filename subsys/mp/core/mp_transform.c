@@ -176,19 +176,23 @@ static bool mp_transform_query(struct mp_pad *pad, struct mp_query *query)
 	case MP_QUERY_CAPS:
 		return mp_transform_query_caps(self, pad->direction, query);
 	case MP_QUERY_ALLOCATION:
-		struct mp_query *peer_query = mp_query_new_allocation(self->srcpad.caps);
+		struct mp_query peer_query;
+
+		mp_query_init_allocation(&peer_query, self->srcpad.caps);
 
 		/* Query the downstream */
-		if (!mp_pad_query(self->srcpad.peer, peer_query)) {
-			mp_query_destroy(peer_query);
+		if (!mp_pad_query(self->srcpad.peer, &peer_query)) {
+			mp_query_clear(&peer_query);
 			return false;
 		}
 
 		/* Decide allocation for downstream */
-		if (!self->decide_allocation(self, peer_query)) {
-			mp_query_destroy(peer_query);
+		if (!self->decide_allocation(self, &peer_query)) {
+			mp_query_clear(&peer_query);
 			return false;
 		}
+
+		mp_query_clear(&peer_query);
 
 		/* Configure/start the output buffer pool */
 		if (self->mode == MP_MODE_NORMAL) {

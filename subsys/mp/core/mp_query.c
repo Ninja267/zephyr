@@ -12,30 +12,30 @@ enum {
 	MP_QUERY_POOL_CONFIG,
 };
 
-static struct mp_query *mp_query_new(enum mp_query_type qtype, uint8_t vtype, const void *value)
+static void mp_query_init(struct mp_query *query, enum mp_query_type qtype, uint8_t vtype,
+			  const void *value)
 {
-	struct mp_query *query = (struct mp_query *)k_malloc(sizeof(struct mp_query));
-
-	if (query == NULL) {
-		return NULL;
-	}
-
 	query->type = qtype;
 	mp_structure_init(&query->structure, MP_MEDIA_UNKNOWN);
 	mp_structure_append(&query->structure, query->type, mp_value_new(vtype, value, NULL));
-
-	return query;
 }
 
-void mp_query_destroy(struct mp_query *query)
+void mp_query_clear(struct mp_query *query)
 {
+	if (query == NULL) {
+		return;
+	}
+
 	mp_structure_clear(&query->structure);
-	k_free(query);
 }
 
-struct mp_query *mp_query_new_caps(struct mp_caps *caps)
+void mp_query_init_caps(struct mp_query *query, struct mp_caps *caps)
 {
-	return mp_query_new(MP_QUERY_CAPS, MP_TYPE_OBJECT, caps);
+	if (query == NULL) {
+		return;
+	}
+
+	mp_query_init(query, MP_QUERY_CAPS, MP_TYPE_OBJECT, caps);
 }
 
 struct mp_caps *mp_query_get_caps(struct mp_query *query)
@@ -66,9 +66,13 @@ bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps)
 	return true;
 }
 
-struct mp_query *mp_query_new_allocation(struct mp_caps *caps)
+void mp_query_init_allocation(struct mp_query *query, struct mp_caps *caps)
 {
-	return mp_query_new(MP_QUERY_ALLOCATION, MP_TYPE_OBJECT, caps);
+	if (query == NULL) {
+		return;
+	}
+
+	mp_query_init(query, MP_QUERY_ALLOCATION, MP_TYPE_OBJECT, caps);
 }
 
 static bool mp_query_set_ptr(struct mp_query *query, void *ptr, uint8_t field)

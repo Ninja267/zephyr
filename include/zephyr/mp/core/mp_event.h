@@ -68,34 +68,50 @@ enum mp_event_type {
  * Event structure.
  */
 struct mp_event {
-	uint8_t type;                   /**< Type of the event */
-	struct mp_structure *structure; /**< Associated metadata structure */
-	uint32_t timestamp;             /**< Timestamp of the event */
+	uint8_t type;                  /**< Type of the event */
+	struct mp_structure structure; /**< Associated metadata structure */
+	uint32_t timestamp;            /**< Timestamp of the event */
 };
 
 /**
- * Create a new custom event.
+ * @brief Initialize an event of the given type.
  *
- * @param type Event type to assign to new event (See @ref mp_event_type)
- * @param structure Pointer to a structure to associate with the event.
- * @return Pointer to new @ref mp_event, or NULL if allcation fails.
+ * The event is initialized in place; no dynamic allocation is performed for
+ * the event itself.
+ *
+ * @param event Pointer to caller-provided storage for the @ref mp_event
+ * @param type Event type to assign (See @ref mp_event_type)
  */
-struct mp_event *mp_event_new_custom(enum mp_event_type type, struct mp_structure *structure);
+void mp_event_init_custom(struct mp_event *event, enum mp_event_type type);
 
 /**
- * Create a new CAPS event.
+ * @brief Initialize a CAPS event.
  *
+ * The event is initialized in place; no dynamic allocation is performed for
+ * the event itself.
+ *
+ * @param event Pointer to caller-provided storage for the @ref mp_event
  * @param caps @ref mp_caps to include
- * @return Pointer to new @ref mp_event
  */
-struct mp_event *mp_event_new_caps(struct mp_caps *caps);
+void mp_event_init_caps(struct mp_event *event, struct mp_caps *caps);
 
 /**
- * Create a new EOS (End-of-Stream) event.
+ * @brief Initialize an EOS (End-of-Stream) event.
  *
- * @return Pointer to new @ref mp_event
+ * @param event Pointer to caller-provided storage for the @ref mp_event
  */
-struct mp_event *mp_event_new_eos(void);
+void mp_event_init_eos(struct mp_event *event);
+
+/**
+ * @brief Release resources held by an event.
+ *
+ * Releases the event's internal references and clears its associated
+ * structure. The @p event storage itself is not freed (it may be reused via
+ * another mp_event_init_*() call).
+ *
+ * @param event Pointer to the @ref mp_event to clear
+ */
+void mp_event_clear(struct mp_event *event);
 
 /**
  * Get @ref mp_caps from a MP_EVENT_CAPS event.
@@ -113,13 +129,6 @@ struct mp_caps *mp_event_get_caps(struct mp_event *event);
  * @return true if successful, false otherwise
  */
 bool mp_event_set_caps(struct mp_event *event, struct mp_caps *caps);
-
-/**
- * Destroy an event and its free its associated resources.
- *
- * @param event Pointer to @ref mp_event to destroy
- */
-void mp_event_destroy(struct mp_event *event);
 
 /** @} */
 

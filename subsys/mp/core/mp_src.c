@@ -104,9 +104,9 @@ static bool mp_src_negotiate(struct mp_src *src)
 {
 	struct mp_caps *common_caps;
 	struct mp_caps *fixated_caps;
-	struct mp_query *caps_query;
-	struct mp_query *alloc_query;
-	struct mp_event *caps_event;
+	struct mp_query caps_query;
+	struct mp_query alloc_query;
+	struct mp_event caps_event;
 	bool ret = false;
 
 	/* Caps negotiation */
@@ -115,14 +115,14 @@ static bool mp_src_negotiate(struct mp_src *src)
 	}
 
 	/* Query the peer's capabilities */
-	caps_query = mp_query_new_caps(src->src_caps);
-	if (!mp_pad_query(src->srcpad.peer, caps_query)) {
-		mp_query_destroy(caps_query);
+	mp_query_init_caps(&caps_query, src->src_caps);
+	if (!mp_pad_query(src->srcpad.peer, &caps_query)) {
+		mp_query_clear(&caps_query);
 		return false;
 	}
 
-	common_caps = mp_caps_ref(mp_query_get_caps(caps_query));
-	mp_query_destroy(caps_query);
+	common_caps = mp_caps_ref(mp_query_get_caps(&caps_query));
+	mp_query_clear(&caps_query);
 	if (common_caps == NULL) {
 		return false;
 	}
@@ -139,10 +139,10 @@ static bool mp_src_negotiate(struct mp_src *src)
 	fixated_caps = mp_caps_fixate(src->srcpad.caps);
 
 	/* Push a caps event downstream */
-	caps_event = mp_event_new_caps(fixated_caps);
+	mp_event_init_caps(&caps_event, fixated_caps);
 
-	ret = mp_pad_send_event(src->srcpad.peer, caps_event);
-	mp_event_destroy(caps_event);
+	ret = mp_pad_send_event(src->srcpad.peer, &caps_event);
+	mp_event_clear(&caps_event);
 
 	if (!ret) {
 		mp_caps_unref(fixated_caps);
@@ -158,15 +158,15 @@ static bool mp_src_negotiate(struct mp_src *src)
 	}
 
 	/* Query the peer's allocation proposal */
-	alloc_query = mp_query_new_allocation(src->srcpad.caps);
-	if (!mp_pad_query(src->srcpad.peer, alloc_query)) {
-		mp_query_destroy(alloc_query);
+	mp_query_init_allocation(&alloc_query, src->srcpad.caps);
+	if (!mp_pad_query(src->srcpad.peer, &alloc_query)) {
+		mp_query_clear(&alloc_query);
 		return false;
 	}
 
 	/* Decide the allocation */
-	ret = src->decide_allocation(src, alloc_query);
-	mp_query_destroy(alloc_query);
+	ret = src->decide_allocation(src, &alloc_query);
+	mp_query_clear(&alloc_query);
 
 	return ret;
 }
