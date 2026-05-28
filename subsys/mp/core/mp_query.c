@@ -7,35 +7,38 @@
 #include <zephyr/kernel.h>
 #include <zephyr/mp/core/mp_query.h>
 
+#include "mp_caps_field.h"
+
 enum {
 	MP_QUERY_POOL = 0,
 	MP_QUERY_POOL_CONFIG,
 };
 
-static struct mp_query *mp_query_new(enum mp_query_type qtype, uint8_t vtype, const void *value)
+static void mp_query_init(struct mp_query *query, enum mp_query_type qtype, uint8_t vtype,
+			  const void *value)
 {
-	struct mp_query *query = (struct mp_query *)k_malloc(sizeof(struct mp_query));
-
-	if (query == NULL) {
-		return NULL;
-	}
-
 	query->type = qtype;
 	mp_structure_init(&query->structure, MP_MEDIA_UNKNOWN);
 	mp_structure_append(&query->structure, query->type, mp_value_new(vtype, value, NULL));
-
-	return query;
 }
 
-void mp_query_destroy(struct mp_query *query)
+void mp_query_clear(struct mp_query *query)
 {
+	if (query == NULL) {
+		return;
+	}
+
 	mp_structure_clear(&query->structure);
-	k_free(query);
 }
 
-struct mp_query *mp_query_new_caps(struct mp_caps *caps)
+void mp_query_init_caps(struct mp_query *query, struct mp_caps *caps)
 {
-	return mp_query_new(MP_QUERY_CAPS, MP_TYPE_OBJECT, caps);
+	if (query == NULL) {
+		return;
+	}
+
+	mp_query_init(query, MP_QUERY_CAPS, MP_TYPE_OBJECT, caps);
+	mp_caps_unref(caps);
 }
 
 struct mp_caps *mp_query_get_caps(struct mp_query *query)
@@ -44,31 +47,29 @@ struct mp_caps *mp_query_get_caps(struct mp_query *query)
 		return NULL;
 	}
 
-	return MP_CAPS(
-		mp_value_get_object(mp_structure_get_value(&query->structure, MP_QUERY_CAPS)));
+	return mp_caps_field_get(&query->structure, MP_QUERY_CAPS);
 }
 
 bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps)
 {
 	if (query == NULL || query->type != MP_QUERY_CAPS) {
+		mp_caps_unref(caps);
 		return false;
 	}
 
-	struct mp_value *value = mp_structure_get_value(&query->structure, MP_QUERY_CAPS);
-
-	if (value) {
-		mp_value_set(value, MP_TYPE_OBJECT, caps);
-	} else {
-		mp_structure_append(&query->structure, MP_QUERY_CAPS,
-				    mp_value_new(MP_TYPE_OBJECT, caps));
-	}
+	mp_caps_field_set(&query->structure, MP_QUERY_CAPS, caps);
 
 	return true;
 }
 
-struct mp_query *mp_query_new_allocation(struct mp_caps *caps)
+void mp_query_init_allocation(struct mp_query *query, struct mp_caps *caps)
 {
-	return mp_query_new(MP_QUERY_ALLOCATION, MP_TYPE_OBJECT, caps);
+	if (query == NULL) {
+		return;
+	}
+
+	mp_query_init(query, MP_QUERY_ALLOCATION, MP_TYPE_OBJECT, caps);
+	mp_caps_unref(caps);
 }
 
 static bool mp_query_set_ptr(struct mp_query *query, void *ptr, uint8_t field)
