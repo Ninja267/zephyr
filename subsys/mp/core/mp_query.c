@@ -7,6 +7,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/mp/core/mp_query.h>
 
+#include "mp_caps_field.h"
+
 enum {
 	MP_QUERY_POOL = 0,
 	MP_QUERY_POOL_CONFIG,
@@ -41,18 +43,11 @@ void mp_query_init_caps(struct mp_query *query, struct mp_caps *caps)
 
 struct mp_caps *mp_query_get_caps(struct mp_query *query)
 {
-	struct mp_value *value;
-
 	if (query == NULL || query->type != MP_QUERY_CAPS) {
 		return NULL;
 	}
 
-	value = mp_structure_get_value(&query->structure, MP_QUERY_CAPS);
-	if (value == NULL) {
-		return NULL;
-	}
-
-	return mp_caps_ref(MP_CAPS(mp_value_get_object(value)));
+	return mp_caps_field_get(&query->structure, MP_QUERY_CAPS);
 }
 
 bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps)
@@ -62,16 +57,7 @@ bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps)
 		return false;
 	}
 
-	struct mp_value *value = mp_structure_get_value(&query->structure, MP_QUERY_CAPS);
-
-	if (value) {
-		mp_value_set(value, MP_TYPE_OBJECT, caps);
-	} else {
-		mp_structure_append(&query->structure, MP_QUERY_CAPS,
-				    mp_value_new(MP_TYPE_OBJECT, caps));
-	}
-
-	mp_caps_unref(caps);
+	mp_caps_field_set(&query->structure, MP_QUERY_CAPS, caps);
 
 	return true;
 }

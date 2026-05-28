@@ -10,6 +10,8 @@
 
 #include <zephyr/mp/core/mp_event.h>
 
+#include "mp_caps_field.h"
+
 void mp_event_init_custom(struct mp_event *event, enum mp_event_type type)
 {
 	if (event == NULL) {
@@ -34,9 +36,7 @@ void mp_event_init_caps(struct mp_event *event, struct mp_caps *caps)
 	}
 
 	mp_event_init_custom(event, MP_EVENT_CAPS);
-	mp_structure_append(&event->structure, MP_EVENT_CAPS,
-			    mp_value_new(MP_TYPE_OBJECT, caps));
-	mp_caps_unref(caps);
+	mp_caps_field_set(&event->structure, MP_EVENT_CAPS, caps);
 }
 
 void mp_event_clear(struct mp_event *event)
@@ -50,18 +50,11 @@ void mp_event_clear(struct mp_event *event)
 
 struct mp_caps *mp_event_get_caps(struct mp_event *event)
 {
-	struct mp_value *value;
-
 	if (event == NULL || event->type != MP_EVENT_CAPS) {
 		return NULL;
 	}
 
-	value = mp_structure_get_value(&event->structure, MP_EVENT_CAPS);
-	if (value == NULL) {
-		return NULL;
-	}
-
-	return mp_caps_ref(MP_CAPS(mp_value_get_object(value)));
+	return mp_caps_field_get(&event->structure, MP_EVENT_CAPS);
 }
 
 bool mp_event_set_caps(struct mp_event *event, struct mp_caps *caps)
@@ -71,16 +64,7 @@ bool mp_event_set_caps(struct mp_event *event, struct mp_caps *caps)
 		return false;
 	}
 
-	struct mp_value *value = mp_structure_get_value(&event->structure, MP_EVENT_CAPS);
-
-	if (value) {
-		mp_value_set(value, MP_TYPE_OBJECT, caps);
-	} else {
-		mp_structure_append(&event->structure, MP_EVENT_CAPS,
-				    mp_value_new(MP_TYPE_OBJECT, caps));
-	}
-
-	mp_caps_unref(caps);
+	mp_caps_field_set(&event->structure, MP_EVENT_CAPS, caps);
 
 	return true;
 }
