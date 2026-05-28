@@ -73,9 +73,18 @@
 /**
  * @struct mp_structure
  * @brief Dynamic structure for holding named fields and values.
+ *
+ * Each field is stored as an @ref mp_value carrying its own field ID; values
+ * are linked into the @c fields list via their embedded node, removing the
+ * need for a separate per-field wrapper allocation.
+ *
+ * The structure also carries an @c node so it can be linked directly into
+ * an @ref mp_caps list without an intermediate wrapper.
  */
 struct mp_structure {
-	/** List of fields in the structure */
+	/** Link node — used when structure is contained in an @ref mp_caps */
+	sys_snode_t node;
+	/** List of fields (mp_value entries) in the structure */
 	sys_slist_t fields;
 	/** Media type ID of the structure */
 	uint8_t media_type_id;

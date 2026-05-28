@@ -18,6 +18,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <zephyr/sys/slist.h>
+
 #include <zephyr/mp/core/mp_object.h>
 
 /**
@@ -61,11 +63,82 @@ enum mp_value_type {
 };
 
 /**
- * @brief Base mp_value structure
+ * @brief Fraction value (numerator/denominator).
+ *
+ * Stored signed or unsigned depending on the enclosing value's type.
+ */
+struct mp_value_fraction_data {
+	union {
+		int32_t v_int;
+		uint32_t v_uint;
+	} num;
+	union {
+		int32_t v_int;
+		uint32_t v_uint;
+	} denom;
+};
+
+/**
+ * @brief Integer range value (min, max, step).
+ */
+struct mp_value_range_data {
+	union {
+		int32_t v_int;
+		uint32_t v_uint;
+	} min;
+	union {
+		int32_t v_int;
+		uint32_t v_uint;
+	} max;
+	union {
+		int32_t v_int;
+		uint32_t v_uint;
+	} step;
+};
+
+/**
+ * @brief Fraction range value (min, max, step) where each member is a fraction.
+ */
+struct mp_value_fraction_range_data {
+	struct mp_value_fraction_data min;
+	struct mp_value_fraction_data max;
+	struct mp_value_fraction_data step;
+};
+
+/**
+ * @brief mp_value structure.
+ *
+ * mp_value is a uniformly sized tagged union. Every value carries a list
+ * link node so it can be threaded directly into a list (when the value is
+ * an item of an @ref MP_TYPE_LIST), or into a structure (when the value is
+ * a field of an @ref mp_structure).
+ *
+ * This design lets the entire @ref mp_value system run on a static
+ * fixed-size pool with no dynamic memory allocation and no wrapper
+ * "node" objects.
  */
 struct mp_value {
+	/** Link node — used when value is contained in a list or structure */
+	sys_snode_t node;
 	/** Type of value, see @ref mp_value_type */
-	enum mp_value_type type;
+	uint16_t type;
+	/** Field ID when value belongs to an @ref mp_structure; otherwise unused */
+	uint8_t field_id;
+	/** Reserved/padding */
+	uint8_t _reserved;
+	/** Type-dependent payload */
+	union {
+		bool v_boolean;
+		int32_t v_int;
+		uint32_t v_uint;
+		const char *v_cstring;
+		struct mp_object *v_obj;
+		void *v_ptr;
+		struct mp_value_range_data v_range;
+		struct mp_value_fraction_data v_fraction;
+		struct mp_value_fraction_range_data v_fraction_range;
+		sys_slist_t v_list;
+	};
 };
 
 /**

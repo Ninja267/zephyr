@@ -56,3 +56,28 @@ config MP_CAPSFILTER
 config MP_NET_BUF_POOL_COUNT
 	int "Number of buffers can be handled at the same time for the whole pipeline"
 	default 1
+
+config MP_VALUE_POOL_SIZE
+	int "Maximum number of mp_value objects"
+	default 128
+	help
+	  Capacity of the static pool used to allocate mp_value instances.
+	  mp_value is a fixed-size tagged union; this option bounds the
+	  total number of values (including list items and structure fields)
+	  that can be live at the same time across the whole pipeline.
+
+config MP_STRUCTURE_POOL_SIZE
+	int "Maximum number of mp_structure objects"
+	default 16
+	help
+	  Capacity of the static pool used to allocate mp_structure
+	  instances. Each set of capability fields (e.g. one media format
+	  inside a caps) consumes one slot.
+
+config MP_CAPS_POOL_SIZE
+	int "Maximum number of mp_caps objects"
+	default 16
+	help
+	  Capacity of the static pool used to allocate mp_caps instances.
+	  Each pad's caps reference, query, and intermediate intersect
+	  result consumes one slot.

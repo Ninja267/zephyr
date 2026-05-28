@@ -92,24 +92,12 @@ enum {
  *
  * @brief Represents a list of media capabilities.
  *
+ * @ref mp_structure entries are linked directly into @c caps_structures via
+ * their embedded node — no wrapper allocation is needed per structure.
  */
 struct mp_caps {
 	struct mp_object object;     /**< Base object */
-	sys_slist_t caps_structures; /**< List of capability structures */
-};
-
-/**
- * @struct mp_cap_structure
- * @brief structure used to hold a single capability structure.
- *
- * Each caps structure has:
- * - A media type ID: Specifies the nature (e.g., video, audio) and format type (e.g., raw,
- * compressed) of the media stream.
- * - A set of field–value pairs: Each pair represents a specific capability of the element.
- */
-struct mp_cap_structure {
-	sys_snode_t node;               /**< Linked list node */
-	struct mp_structure *structure; /**< Pointer to the capability structure */
+	sys_slist_t caps_structures; /**< List of @ref mp_structure entries */
 };
 
 /** @brief Flag indicating ANY caps type */
