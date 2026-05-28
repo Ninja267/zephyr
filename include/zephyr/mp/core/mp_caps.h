@@ -253,17 +253,22 @@ void mp_caps_print(struct mp_caps *caps);
  */
 static inline struct mp_caps *mp_caps_ref(struct mp_caps *caps)
 {
+	if (caps == NULL) {
+		return NULL;
+	}
 	return (struct mp_caps *)mp_object_ref(&caps->object);
 }
 
 /**
  * @brief Release a reference to a @ref mp_caps object.
  *
- * @param caps Pointer to @ref mp_caps
+ * @param caps Pointer to @ref mp_caps (may be NULL)
  */
 static inline void mp_caps_unref(struct mp_caps *caps)
 {
-	mp_object_unref(&caps->object);
+	if (caps != NULL) {
+		mp_object_unref(&caps->object);
+	}
 }
 
 /**
