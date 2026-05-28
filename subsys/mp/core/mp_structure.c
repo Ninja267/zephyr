@@ -4,13 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <stdio.h>
-
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 
 #include <zephyr/mp/core/mp_caps.h>
 #include <zephyr/mp/core/mp_structure.h>
 #include <zephyr/mp/core/mp_value.h>
+
+LOG_MODULE_REGISTER(mp_structure, CONFIG_MP_LOG_LEVEL);
 
 #define MP_STRUCTURE_END UINT8_MAX
 
@@ -20,6 +22,13 @@ struct mp_structure_field {
 	sys_snode_t node;
 };
 
+/* Static pools: structures and their fields never use the system heap. */
+K_MEM_SLAB_DEFINE_STATIC(mp_structure_slab, ROUND_UP(sizeof(struct mp_structure), sizeof(void *)),
+			 CONFIG_MP_STRUCTURE_POOL_SIZE, sizeof(void *));
+K_MEM_SLAB_DEFINE_STATIC(mp_structure_field_slab,
+			 ROUND_UP(sizeof(struct mp_structure_field), sizeof(void *)),
+			 CONFIG_MP_STRUCTURE_FIELD_POOL_SIZE, sizeof(void *));
+
 void mp_structure_init(struct mp_structure *structure, uint8_t media_type_id)
 {
 	if (structure != NULL) {
@@ -28,9 +37,15 @@ void mp_structure_init(struct mp_structure *structure, uint8_t media_type_id)
 	}
 }
 
-struct mp_structure *mp_structure_new_empty(uint8_t media_type_id)
+static struct mp_structure *mp_structure_new_empty(uint8_t media_type_id)
 {
-	struct mp_structure *structure = k_malloc(sizeof(struct mp_structure));
+	struct mp_structure *structure;
+
+	if (k_mem_slab_alloc(&mp_structure_slab, (void **)&structure, K_NO_WAIT) != 0) {
+		LOG_ERR("mp_structure pool exhausted (CONFIG_MP_STRUCTURE_POOL_SIZE=%d)",
+			CONFIG_MP_STRUCTURE_POOL_SIZE);
+		return NULL;
+	}
 
 	mp_structure_init(structure, media_type_id);
 
@@ -40,23 +55,27 @@ struct mp_structure *mp_structure_new_empty(uint8_t media_type_id)
 void mp_structure_clear(struct mp_structure *structure)
 {
 	struct mp_structure_field *field;
+	sys_snode_t *node;
 
 	if (structure == NULL) {
 		return;
 	}
 
-	while (!sys_slist_is_empty(&structure->fields)) {
-		field = CONTAINER_OF(sys_slist_get(&structure->fields), struct mp_structure_field,
-				     node);
+	while ((node = sys_slist_get(&structure->fields)) != NULL) {
+		field = CONTAINER_OF(node, struct mp_structure_field, node);
 		mp_value_destroy(field->value);
-		k_free(field);
+		k_mem_slab_free(&mp_structure_field_slab, field);
 	}
 }
 
 void mp_structure_destroy(struct mp_structure *structure)
 {
+	if (structure == NULL) {
+		return;
+	}
+
 	mp_structure_clear(structure);
-	k_free(structure);
+	k_mem_slab_free(&mp_structure_slab, structure);
 }
 
 void mp_structure_append(struct mp_structure *structure, uint8_t field_id, struct mp_value *value)
@@ -64,10 +83,19 @@ void mp_structure_append(struct mp_structure *structure, uint8_t field_id, struc
 	struct mp_structure_field *field;
 
 	if (structure == NULL || value == NULL) {
+		mp_value_destroy(value);
 		return;
 	}
 
-	field = k_malloc(sizeof(struct mp_structure_field));
+	if (k_mem_slab_alloc(&mp_structure_field_slab, (void **)&field, K_NO_WAIT) != 0) {
+		LOG_ERR("mp_structure field pool exhausted "
+			"(CONFIG_MP_STRUCTURE_FIELD_POOL_SIZE=%d)",
+			CONFIG_MP_STRUCTURE_FIELD_POOL_SIZE);
+		/* Take ownership of value as documented and release it. */
+		mp_value_destroy(value);
+		return;
+	}
+
 	field->field_id = field_id;
 	field->value = value;
 	sys_slist_append(&structure->fields, &field->node);
@@ -85,13 +113,11 @@ struct mp_structure *mp_structure_new(uint8_t media_type_id, ...)
 		return NULL;
 	}
 
-	structure = k_malloc(sizeof(struct mp_structure));
+	structure = mp_structure_new_empty(media_type_id);
 	if (structure == NULL) {
 		return NULL;
 	}
 
-	structure->media_type_id = media_type_id;
-	sys_slist_init(&structure->fields);
 	va_start(args, media_type_id);
 	while (1) {
 		field_id = va_arg(args, uint32_t);
@@ -155,7 +181,7 @@ bool mp_structure_remove_field(struct mp_structure *structure, uint8_t field_id)
 			sys_slist_remove(&structure->fields, prev_field ? &prev_field->node : NULL,
 					 &field->node);
 			mp_value_destroy(field->value);
-			k_free(field);
+			k_mem_slab_free(&mp_structure_field_slab, field);
 			return true;
 		}
 		prev_field = field;
@@ -164,7 +190,7 @@ bool mp_structure_remove_field(struct mp_structure *structure, uint8_t field_id)
 	return false;
 }
 
-int mp_structure_len(struct mp_structure *structure)
+static int mp_structure_len(struct mp_structure *structure)
 {
 	return sys_slist_len(&structure->fields);
 }
@@ -223,6 +249,10 @@ struct mp_structure *mp_structure_intersect(struct mp_structure *struct1,
 	}
 
 	intersect_structure = mp_structure_new_empty(struct1->media_type_id);
+	if (intersect_structure == NULL) {
+		return NULL;
+	}
+
 	/* Check which one has more field than other */
 	if (mp_structure_len(struct1) >= mp_structure_len(struct2)) {
 		big_structure = struct1;
@@ -257,6 +287,10 @@ struct mp_structure *mp_structure_duplicate(struct mp_structure *src)
 	}
 
 	dup = mp_structure_new_empty(src->media_type_id);
+	if (dup == NULL) {
+		return NULL;
+	}
+
 	SYS_SLIST_FOR_EACH_CONTAINER(&src->fields, field, node) {
 		copy_value = mp_value_duplicate(field->value);
 		mp_structure_append(dup, field->field_id, copy_value);
@@ -281,23 +315,36 @@ bool mp_structure_is_fixed(struct mp_structure *structure)
 struct mp_structure *mp_structure_fixate(struct mp_structure *src)
 {
 	struct mp_structure_field *field;
-	struct mp_structure *fixated_structure = mp_structure_new_empty(src->media_type_id);
+	struct mp_structure *fixated_structure;
 	struct mp_value *fixated_value;
+	struct mp_fraction frac;
+
+	if (src == NULL) {
+		return NULL;
+	}
+
+	fixated_structure = mp_structure_new_empty(src->media_type_id);
+	if (fixated_structure == NULL) {
+		return NULL;
+	}
 
 	SYS_SLIST_FOR_EACH_CONTAINER(&src->fields, field, node) {
-		switch (field->value->type) {
+		switch (mp_value_get_type(field->value)) {
 		case MP_TYPE_INT_RANGE:
 			fixated_value =
 				mp_value_new(MP_TYPE_INT, mp_value_get_int_range_min(field->value));
 			break;
 		case MP_TYPE_UINT_RANGE:
-			fixated_value = mp_value_new(MP_TYPE_UINT,
-						     mp_value_get_int_range_min(field->value));
+			fixated_value =
+				mp_value_new(MP_TYPE_UINT, mp_value_get_uint_range_min(field->value));
 			break;
 		case MP_TYPE_INT_FRACTION_RANGE:
+			frac = mp_value_get_fraction_range_min(field->value);
+			fixated_value = mp_value_new(MP_TYPE_INT_FRACTION, frac.num, frac.denom);
+			break;
 		case MP_TYPE_UINT_FRACTION_RANGE:
-			fixated_value =
-				mp_value_duplicate(mp_value_get_fraction_range_min(field->value));
+			frac = mp_value_get_fraction_range_min(field->value);
+			fixated_value = mp_value_new(MP_TYPE_UINT_FRACTION, frac.num, frac.denom);
 			break;
 		case MP_TYPE_LIST:
 			fixated_value = mp_value_duplicate(mp_value_list_get(field->value, 0));

@@ -1,0 +1,13 @@
+# Copyright 2025-2026 NXP
+# SPDX-License-Identifier: Apache-2.0
+
+tests:
+  mp.core.value_structure_caps:
+    tags:
+      - mp
+    platform_allow:
+      - native_sim
+      - native_sim/native/64
+      - qemu_cortex_m3
+    integration_platforms:
+      - native_sim

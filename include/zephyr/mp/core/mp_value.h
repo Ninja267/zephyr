@@ -15,6 +15,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -23,6 +24,18 @@
 /**
  * @defgroup mp_value Value Container
  * @brief A generic container for values for different @ref mp_value_type
+ *
+ * An @ref mp_value is a fixed-size tagged union: a single value carries its
+ * @ref mp_value_type together with the matching payload (single value, range,
+ * fraction, fraction range or a list of values). The concrete type a value
+ * holds is decided at runtime, not at compile time, so a field can be a single
+ * value, a range or a list interchangeably.
+ *
+ * @note Values are not allocated from the system heap. They are taken from a
+ * statically sized pool whose capacity is controlled by
+ * @kconfig{CONFIG_MP_VALUE_POOL_SIZE}. This keeps memory usage deterministic
+ * and avoids heap fragmentation, which is the recommended approach on resource
+ * constrained targets.
  *
  * @{
  */
@@ -61,11 +74,24 @@ enum mp_value_type {
 };
 
 /**
- * @brief Base mp_value structure
+ * @brief Opaque value container.
+ *
+ * The concrete layout is private to the implementation. Values are always
+ * manipulated through the functions of this module and referenced by pointer.
  */
-struct mp_value {
-	/** Type of value, see @ref mp_value_type */
-	enum mp_value_type type;
+struct mp_value;
+
+/**
+ * @brief Plain numerator/denominator pair.
+ *
+ * Used to read fraction components out of an @ref mp_value without exposing
+ * the internal representation. For unsigned fractions the stored bit pattern
+ * is preserved (reinterpret @ref num / @ref denom as uint32_t when the source
+ * value is an unsigned fraction type).
+ */
+struct mp_fraction {
+	int32_t num;   /**< Numerator */
+	int32_t denom; /**< Denominator */
 };
 
 /**
@@ -86,9 +112,8 @@ struct mp_value {
  * @param type The type of the value to create.
  * @param ... Variadic arguments used to initialize the value, depending on the specified type.
  *
- * @return Pointer to the newly created mp_value,  NULL if memory allocation fails or an invalid
- type
- * or argument list is provided.
+ * @return Pointer to the newly created mp_value,  NULL if the value pool is
+ * exhausted or an invalid type or argument list is provided.
  */
 struct mp_value *mp_value_new(enum mp_value_type type, ...);
 
@@ -115,9 +140,17 @@ struct mp_value *mp_value_new_empty(enum mp_value_type type);
 /**
  * Destroy value
  *
- * @param value value to destroy
+ * @param value value to destroy (may be NULL)
  */
 void mp_value_destroy(struct mp_value *value);
+
+/**
+ * Get the type of a value
+ *
+ * @param value value to query (must not be NULL)
+ * @return type of the value, see @ref mp_value_type
+ */
+enum mp_value_type mp_value_get_type(const struct mp_value *value);
 
 /**
  * Get list size
@@ -138,7 +171,7 @@ bool mp_value_list_is_empty(const struct mp_value *list);
  * Append value to list
  *
  * @param list list to append to
- * @param append_value value to append
+ * @param append_value value to append (ownership is transferred to the list)
  */
 void mp_value_list_append(struct mp_value *list, struct mp_value *append_value);
 
@@ -198,20 +231,14 @@ uint32_t mp_value_get_uint_range_max(const struct mp_value *range);
 /** Get step value of @ref mp_value with MP_TYPE_UINT_RANGE */
 uint32_t mp_value_get_uint_range_step(const struct mp_value *range);
 
-/** Get the min value of a mp_value with type MP_TYPE_FRACTION_RANGE, returning a mp_value with
- * MP_TYPE_FRACTION
- */
-const struct mp_value *mp_value_get_fraction_range_min(const struct mp_value *fraction_range);
+/** Get the min component of a mp_value with type MP_TYPE_FRACTION_RANGE */
+struct mp_fraction mp_value_get_fraction_range_min(const struct mp_value *fraction_range);
 
-/** Get the max value of a mp_value with type MP_TYPE_FRACTION_RANGE, returning a mp_value with
- * MP_TYPE_FRACTION
- */
-const struct mp_value *mp_value_get_fraction_range_max(const struct mp_value *fraction_range);
+/** Get the max component of a mp_value with type MP_TYPE_FRACTION_RANGE */
+struct mp_fraction mp_value_get_fraction_range_max(const struct mp_value *fraction_range);
 
-/** Get the step value of a mp_value with type MP_TYPE_FRACTION_RANGE, returning a mp_value
- * with MP_TYPE_FRACTION
- */
-const struct mp_value *mp_value_get_fraction_range_step(const struct mp_value *fraction_range);
+/** Get the step component of a mp_value with type MP_TYPE_FRACTION_RANGE */
+struct mp_fraction mp_value_get_fraction_range_step(const struct mp_value *fraction_range);
 
 /** Get the object reference of a mp_value with MP_TYPE_OBJECT */
 struct mp_object *mp_value_get_object(struct mp_value *value);
