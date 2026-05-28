@@ -36,21 +36,29 @@ void mp_query_init_caps(struct mp_query *query, struct mp_caps *caps)
 	}
 
 	mp_query_init(query, MP_QUERY_CAPS, MP_TYPE_OBJECT, caps);
+	mp_caps_unref(caps);
 }
 
 struct mp_caps *mp_query_get_caps(struct mp_query *query)
 {
+	struct mp_value *value;
+
 	if (query == NULL || query->type != MP_QUERY_CAPS) {
 		return NULL;
 	}
 
-	return MP_CAPS(
-		mp_value_get_object(mp_structure_get_value(&query->structure, MP_QUERY_CAPS)));
+	value = mp_structure_get_value(&query->structure, MP_QUERY_CAPS);
+	if (value == NULL) {
+		return NULL;
+	}
+
+	return mp_caps_ref(MP_CAPS(mp_value_get_object(value)));
 }
 
 bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps)
 {
 	if (query == NULL || query->type != MP_QUERY_CAPS) {
+		mp_caps_unref(caps);
 		return false;
 	}
 
@@ -63,6 +71,8 @@ bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps)
 				    mp_value_new(MP_TYPE_OBJECT, caps));
 	}
 
+	mp_caps_unref(caps);
+
 	return true;
 }
 
@@ -73,6 +83,7 @@ void mp_query_init_allocation(struct mp_query *query, struct mp_caps *caps)
 	}
 
 	mp_query_init(query, MP_QUERY_ALLOCATION, MP_TYPE_OBJECT, caps);
+	mp_caps_unref(caps);
 }
 
 static bool mp_query_set_ptr(struct mp_query *query, void *ptr, uint8_t field)

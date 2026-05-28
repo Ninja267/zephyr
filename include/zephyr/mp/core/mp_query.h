@@ -69,10 +69,11 @@ struct mp_query {
  * @brief Initialize a query as a capabilities query.
  *
  * The query is initialized in place; no dynamic allocation is performed for
- * the query itself.
+ * the query itself. The caller's reference to @p caps is consumed (the query
+ * takes its own internal reference and the caller's reference is released).
  *
  * @param query Pointer to caller-provided storage for the @ref mp_query
- * @param caps Pointer to @ref mp_caps to include in the query
+ * @param caps Pointer to @ref mp_caps to include in the query (reference consumed)
  */
 void mp_query_init_caps(struct mp_query *query, struct mp_caps *caps);
 
@@ -80,10 +81,12 @@ void mp_query_init_caps(struct mp_query *query, struct mp_caps *caps);
  * @brief Initialize a query as an allocation query.
  *
  * The query is initialized in place; no dynamic allocation is performed for
- * the query itself.
+ * the query itself. The caller's reference to @p caps is consumed (the query
+ * takes its own internal reference and the caller's reference is released).
  *
  * @param query Pointer to caller-provided storage for the @ref mp_query
  * @param caps Pointer to @ref mp_caps describing the media format for allocation
+ *             (reference consumed)
  */
 void mp_query_init_allocation(struct mp_query *query, struct mp_caps *caps);
 
@@ -102,10 +105,11 @@ void mp_query_clear(struct mp_query *query);
  * @brief Set capabilities in a capabilities query
  *
  * Updates or sets the @ref mp_caps in a @ref MP_QUERY_CAPS type query.
- * If capabilities are already present, they will be replaced.
+ * If capabilities are already present, they will be replaced. The caller's
+ * reference to @p caps is consumed by this function.
  *
  * @param query Pointer to a @ref mp_query of type @ref MP_QUERY_CAPS
- * @param caps Pointer to @ref mp_caps to set in the query
+ * @param caps Pointer to @ref mp_caps to set in the query (reference consumed)
  * @return true if successful, false if query is NULL or wrong type
  */
 bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps);
@@ -113,10 +117,13 @@ bool mp_query_set_caps(struct mp_query *query, struct mp_caps *caps);
 /**
  * @brief Get capabilities from a capabilities query
  *
- * Retrieves the @ref mp_caps from a @ref MP_QUERY_CAPS type query.
+ * Retrieves the @ref mp_caps from a @ref MP_QUERY_CAPS type query. Returns a
+ * new reference; the caller is responsible for releasing it via
+ * mp_caps_unref().
  *
  * @param query Pointer to the @ref mp_query of type @ref MP_QUERY_CAPS
- * @return Pointer to @ref mp_caps if available, or NULL if not found or wrong type
+ * @return New reference to @ref mp_caps if available, or NULL if not found or
+ *         wrong type
  */
 struct mp_caps *mp_query_get_caps(struct mp_query *query);
 

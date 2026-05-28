@@ -71,8 +71,10 @@ bool mp_pad_query(struct mp_pad *pad, struct mp_query *query)
 	/* Caps query is considered successful only if the query's caps is valid */
 	if (query->type == MP_QUERY_CAPS) {
 		struct mp_caps *query_caps = mp_query_get_caps(query);
+		bool valid = query_caps != NULL && !mp_caps_is_empty(query_caps);
 
-		if (query_caps == NULL || mp_caps_is_empty(query_caps)) {
+		mp_caps_unref(query_caps);
+		if (!valid) {
 			return false;
 		}
 	}

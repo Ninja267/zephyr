@@ -61,45 +61,45 @@ static bool mp_parser_set_caps(struct mp_parser *parser, enum mp_pad_direction d
 static inline bool mp_parser_query_caps(struct mp_parser *self, enum mp_pad_direction direction,
 					struct mp_query *query)
 {
-	int ret = false;
-	struct mp_pad *this_pad, *other_pad;
+	struct mp_pad *other_pad;
 	struct mp_caps *queried_pad_caps;
+	struct mp_caps *query_caps;
 	struct mp_caps *this_caps = (direction == MP_PAD_SINK) ? self->sink_caps : self->src_caps;
 	struct mp_caps *other_caps = (direction == MP_PAD_SINK) ? self->src_caps : self->sink_caps;
 
 	switch (direction) {
 	case MP_PAD_SINK:
-		this_pad = &self->sinkpad;
 		other_pad = &self->srcpad;
 		break;
 	case MP_PAD_SRC:
-		this_pad = &self->srcpad;
 		other_pad = &self->sinkpad;
 		break;
 	default:
 		return false;
 	}
 
-	queried_pad_caps = mp_caps_intersect(mp_query_get_caps(query), this_caps);
+	query_caps = mp_query_get_caps(query);
+	queried_pad_caps = mp_caps_intersect(query_caps, this_caps);
+	mp_caps_unref(query_caps);
 	if (queried_pad_caps == NULL || mp_caps_is_empty(queried_pad_caps)) {
+		mp_caps_unref(queried_pad_caps);
 		return false;
 	}
 
 	/* Query the peer using the other side supported caps */
-	ret = mp_query_set_caps(query, other_caps);
-	if (!ret || !mp_pad_query(other_pad->peer, query)) {
+	if (!mp_query_set_caps(query, mp_caps_ref(other_caps)) ||
+	    !mp_pad_query(other_pad->peer, query)) {
 		mp_caps_unref(queried_pad_caps);
 		return false;
 	}
 
 	/* Keep query_caps result at other_pad to use later at caps event */
-	mp_caps_replace(&other_pad->caps, mp_query_get_caps(query));
+	query_caps = mp_query_get_caps(query);
+	mp_caps_replace(&other_pad->caps, query_caps);
+	mp_caps_unref(query_caps);
 
 	/* Answer the query */
-	ret = mp_query_set_caps(query, queried_pad_caps);
-	mp_caps_unref(queried_pad_caps);
-
-	return ret;
+	return mp_query_set_caps(query, queried_pad_caps);
 }
 
 static bool mp_parser_event(struct mp_pad *pad, struct mp_event *event)
@@ -107,6 +107,7 @@ static bool mp_parser_event(struct mp_pad *pad, struct mp_event *event)
 	struct mp_parser *parser = MP_PARSER(pad->object.container);
 	struct mp_pad *other_pad =
 		(pad->direction == MP_PAD_SINK) ? &parser->srcpad : &parser->sinkpad;
+	struct mp_caps *event_caps;
 
 	switch (event->type) {
 	case MP_EVENT_EOS:
@@ -114,9 +115,11 @@ static bool mp_parser_event(struct mp_pad *pad, struct mp_event *event)
 
 		return mp_pad_send_event_default(pad, event);
 	case MP_EVENT_CAPS:
-		mp_caps_replace(&pad->caps, mp_event_get_caps(event));
+		event_caps = mp_event_get_caps(event);
+		mp_caps_replace(&pad->caps, event_caps);
+		mp_caps_unref(event_caps);
 
-		if (!mp_event_set_caps(event, other_pad->caps)) {
+		if (!mp_event_set_caps(event, mp_caps_ref(other_pad->caps))) {
 			return false;
 		}
 
@@ -142,7 +145,7 @@ static bool mp_parser_query(struct mp_pad *pad, struct mp_query *query)
 	case MP_QUERY_ALLOCATION:
 		struct mp_query peer_query;
 
-		mp_query_init_allocation(&peer_query, parser->srcpad.caps);
+		mp_query_init_allocation(&peer_query, mp_caps_ref(parser->srcpad.caps));
 
 		/* Query the downstream */
 		if (!mp_pad_query(parser->srcpad.peer, &peer_query)) {

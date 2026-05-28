@@ -29,12 +29,14 @@ void mp_event_init_eos(struct mp_event *event)
 void mp_event_init_caps(struct mp_event *event, struct mp_caps *caps)
 {
 	if (event == NULL) {
+		mp_caps_unref(caps);
 		return;
 	}
 
 	mp_event_init_custom(event, MP_EVENT_CAPS);
 	mp_structure_append(&event->structure, MP_EVENT_CAPS,
 			    mp_value_new(MP_TYPE_OBJECT, caps));
+	mp_caps_unref(caps);
 }
 
 void mp_event_clear(struct mp_event *event)
@@ -48,17 +50,24 @@ void mp_event_clear(struct mp_event *event)
 
 struct mp_caps *mp_event_get_caps(struct mp_event *event)
 {
+	struct mp_value *value;
+
 	if (event == NULL || event->type != MP_EVENT_CAPS) {
 		return NULL;
 	}
 
-	return MP_CAPS(
-		mp_value_get_object(mp_structure_get_value(&event->structure, MP_EVENT_CAPS)));
+	value = mp_structure_get_value(&event->structure, MP_EVENT_CAPS);
+	if (value == NULL) {
+		return NULL;
+	}
+
+	return mp_caps_ref(MP_CAPS(mp_value_get_object(value)));
 }
 
 bool mp_event_set_caps(struct mp_event *event, struct mp_caps *caps)
 {
 	if (event == NULL || event->type != MP_EVENT_CAPS) {
+		mp_caps_unref(caps);
 		return false;
 	}
 
@@ -70,6 +79,8 @@ bool mp_event_set_caps(struct mp_event *event, struct mp_caps *caps)
 		mp_structure_append(&event->structure, MP_EVENT_CAPS,
 				    mp_value_new(MP_TYPE_OBJECT, caps));
 	}
+
+	mp_caps_unref(caps);
 
 	return true;
 }

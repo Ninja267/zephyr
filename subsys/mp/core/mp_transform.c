@@ -79,7 +79,6 @@ static struct mp_caps *mp_transform_transform_caps(struct mp_transform *self,
 static inline bool mp_transform_query_caps(struct mp_transform *self,
 					   enum mp_pad_direction direction, struct mp_query *query)
 {
-	int ret = false;
 	struct mp_pad *this_pad, *other_pad;
 	struct mp_caps *queried_pad_caps, *transformed_caps, *query_caps, *query_back_caps,
 		*res_caps;
@@ -98,20 +97,24 @@ static inline bool mp_transform_query_caps(struct mp_transform *self,
 	}
 
 	/* Intersect the query caps with the pad's caps */
-	queried_pad_caps = mp_caps_intersect(mp_query_get_caps(query), this_pad->caps);
+	query_caps = mp_query_get_caps(query);
+	queried_pad_caps = mp_caps_intersect(query_caps, this_pad->caps);
+	mp_caps_unref(query_caps);
 	if (queried_pad_caps == NULL || mp_caps_is_empty(queried_pad_caps)) {
+		mp_caps_unref(queried_pad_caps);
 		return false;
 	}
 
 	transformed_caps = self->transform_caps(self, other_pad->direction, queried_pad_caps);
 	if (transformed_caps == NULL || mp_caps_is_empty(transformed_caps)) {
+		mp_caps_unref(transformed_caps);
+		mp_caps_unref(queried_pad_caps);
 		return false;
 	}
 
 	/* Query the peer pad with the transformed caps */
-	ret = mp_query_set_caps(query, transformed_caps);
-	mp_caps_unref(transformed_caps);
-	if (!ret) {
+	if (!mp_query_set_caps(query, transformed_caps)) {
+		mp_caps_unref(queried_pad_caps);
 		return false;
 	}
 
@@ -123,6 +126,7 @@ static inline bool mp_transform_query_caps(struct mp_transform *self,
 
 	query_caps = mp_query_get_caps(query);
 	if (query_caps == NULL || mp_caps_is_empty(query_caps)) {
+		mp_caps_unref(query_caps);
 		mp_caps_unref(queried_pad_caps);
 		return false;
 	}
@@ -137,7 +141,10 @@ static inline bool mp_transform_query_caps(struct mp_transform *self,
 
 	/* Transform back the query_caps */
 	query_back_caps = self->transform_caps(self, this_pad->direction, query_caps);
+	mp_caps_unref(query_caps);
 	if (query_back_caps == NULL || mp_caps_is_empty(query_back_caps)) {
+		mp_caps_unref(query_back_caps);
+		mp_caps_unref(queried_pad_caps);
 		return false;
 	}
 
@@ -147,14 +154,12 @@ static inline bool mp_transform_query_caps(struct mp_transform *self,
 	mp_caps_unref(query_back_caps);
 
 	if (res_caps == NULL || mp_caps_is_empty(res_caps)) {
+		mp_caps_unref(res_caps);
 		return false;
 	}
 
 	/* Answer the upstream query */
-	ret = mp_query_set_caps(query, res_caps);
-	mp_caps_unref(res_caps);
-
-	return ret;
+	return mp_query_set_caps(query, res_caps);
 }
 
 static bool mp_transform_decide_allocation(struct mp_transform *self, struct mp_query *query)
@@ -178,7 +183,7 @@ static bool mp_transform_query(struct mp_pad *pad, struct mp_query *query)
 	case MP_QUERY_ALLOCATION:
 		struct mp_query peer_query;
 
-		mp_query_init_allocation(&peer_query, self->srcpad.caps);
+		mp_query_init_allocation(&peer_query, mp_caps_ref(self->srcpad.caps));
 
 		/* Query the downstream */
 		if (!mp_pad_query(self->srcpad.peer, &peer_query)) {
@@ -242,6 +247,7 @@ static bool mp_transform_event(struct mp_pad *pad, struct mp_event *event)
 		transformed_caps =
 			transform->transform_caps(transform, other_pad->direction, event_caps);
 		if (transformed_caps == NULL) {
+			mp_caps_unref(event_caps);
 			return false;
 		}
 
@@ -252,6 +258,7 @@ static bool mp_transform_event(struct mp_pad *pad, struct mp_event *event)
 		intersect_caps = mp_caps_intersect(transformed_caps, other_pad->caps);
 		mp_caps_unref(transformed_caps);
 		if (intersect_caps == NULL) {
+			mp_caps_unref(event_caps);
 			return false;
 		}
 
@@ -259,25 +266,31 @@ static bool mp_transform_event(struct mp_pad *pad, struct mp_event *event)
 		fixated_caps = mp_caps_fixate(intersect_caps);
 		mp_caps_unref(intersect_caps);
 		if (fixated_caps == NULL) {
+			mp_caps_unref(event_caps);
 			return false;
 		}
 
-		if (!mp_event_set_caps(event, fixated_caps)) {
+		if (!mp_event_set_caps(event, mp_caps_ref(fixated_caps))) {
 			mp_caps_unref(fixated_caps);
+			mp_caps_unref(event_caps);
 			return false;
 		}
 
 		if (!mp_pad_send_event(other_pad->peer, event)) {
 			mp_caps_unref(fixated_caps);
+			mp_caps_unref(event_caps);
 			return false;
 		}
 
 		if (!transform->set_caps(transform, pad->direction, event_caps)) {
+			mp_caps_unref(fixated_caps);
+			mp_caps_unref(event_caps);
 			return false;
 		}
 
 		ret = transform->set_caps(transform, other_pad->direction, fixated_caps);
 		mp_caps_unref(fixated_caps);
+		mp_caps_unref(event_caps);
 		return ret;
 	default:
 		return ret;

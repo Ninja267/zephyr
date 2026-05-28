@@ -88,10 +88,11 @@ void mp_event_init_custom(struct mp_event *event, enum mp_event_type type);
  * @brief Initialize a CAPS event.
  *
  * The event is initialized in place; no dynamic allocation is performed for
- * the event itself.
+ * the event itself. The caller's reference to @p caps is consumed (the event
+ * takes its own internal reference and the caller's reference is released).
  *
  * @param event Pointer to caller-provided storage for the @ref mp_event
- * @param caps @ref mp_caps to include
+ * @param caps @ref mp_caps to include (reference consumed)
  */
 void mp_event_init_caps(struct mp_event *event, struct mp_caps *caps);
 
@@ -116,16 +117,21 @@ void mp_event_clear(struct mp_event *event);
 /**
  * Get @ref mp_caps from a MP_EVENT_CAPS event.
  *
+ * Returns a new reference; the caller is responsible for releasing it via
+ * mp_caps_unref().
+ *
  * @param event Pointer to a struct mp_event
- * @return Pointer to event @ref mp_caps
+ * @return New reference to event @ref mp_caps, or NULL on error
  */
 struct mp_caps *mp_event_get_caps(struct mp_event *event);
 
 /**
  * Set caps to a @ref MP_EVENT_CAPS event.
  *
+ * The caller's reference to @p caps is consumed by this function.
+ *
  * @param event Pointer to a @ref mp_event
- * @param caps Pointer to a @ref mp_caps
+ * @param caps Pointer to a @ref mp_caps (reference consumed)
  * @return true if successful, false otherwise
  */
 bool mp_event_set_caps(struct mp_event *event, struct mp_caps *caps);

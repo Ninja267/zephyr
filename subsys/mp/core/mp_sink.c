@@ -73,22 +73,20 @@ static bool mp_sink_query(struct mp_pad *pad, struct mp_query *query)
 {
 	struct mp_sink *self = MP_SINK(pad->object.container);
 	struct mp_caps *caps_intersect, *query_caps;
-	int ret;
 
 	switch (query->type) {
 	case MP_QUERY_CAPS:
 		query_caps = mp_query_get_caps(query);
 		if (query_caps != NULL) {
 			caps_intersect = mp_caps_intersect(self->sink_caps, query_caps);
+			mp_caps_unref(query_caps);
 			if (caps_intersect == NULL || mp_caps_is_empty(caps_intersect)) {
+				mp_caps_unref(caps_intersect);
 				return false;
 			}
-			ret = mp_query_set_caps(query, caps_intersect);
-			mp_caps_unref(caps_intersect);
-			return ret;
-		} else {
-			return mp_query_set_caps(query, self->sink_caps);
+			return mp_query_set_caps(query, caps_intersect);
 		}
+		return mp_query_set_caps(query, mp_caps_ref(self->sink_caps));
 	case MP_QUERY_ALLOCATION:
 		return self->propose_allocation(self, query);
 	default:
@@ -99,6 +97,8 @@ static bool mp_sink_query(struct mp_pad *pad, struct mp_query *query)
 bool mp_sink_event(struct mp_pad *pad, struct mp_event *event)
 {
 	struct mp_sink *sink = MP_SINK(pad->object.container);
+	struct mp_caps *event_caps;
+	bool ret;
 
 	switch (event->type) {
 	case MP_EVENT_EOS:
@@ -106,7 +106,10 @@ bool mp_sink_event(struct mp_pad *pad, struct mp_event *event)
 		return true;
 	case MP_EVENT_CAPS:
 		LOG_DBG("MP_EVENT_CAPS");
-		return sink->set_caps(sink, mp_event_get_caps(event));
+		event_caps = mp_event_get_caps(event);
+		ret = sink->set_caps(sink, event_caps);
+		mp_caps_unref(event_caps);
+		return ret;
 	default:
 		return true;
 	}

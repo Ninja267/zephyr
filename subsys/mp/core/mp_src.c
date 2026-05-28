@@ -71,7 +71,6 @@ static bool mp_src_set_caps(struct mp_src *src, struct mp_caps *caps)
 
 static bool mp_src_query(struct mp_pad *pad, struct mp_query *query)
 {
-	bool ret = false;
 	struct mp_src *src = MP_SRC(pad->object.container);
 	struct mp_caps *intersect_caps;
 	struct mp_caps *query_caps;
@@ -81,15 +80,14 @@ static bool mp_src_query(struct mp_pad *pad, struct mp_query *query)
 		query_caps = mp_query_get_caps(query);
 		if (query_caps != NULL) {
 			intersect_caps = mp_caps_intersect(src->src_caps, query_caps);
+			mp_caps_unref(query_caps);
 			if (intersect_caps == NULL || mp_caps_is_empty(intersect_caps)) {
+				mp_caps_unref(intersect_caps);
 				return false;
 			}
-			ret = mp_query_set_caps(query, intersect_caps);
-			mp_caps_unref(intersect_caps);
-		} else {
-			ret = mp_query_set_caps(query, src->src_caps);
+			return mp_query_set_caps(query, intersect_caps);
 		}
-		return ret;
+		return mp_query_set_caps(query, mp_caps_ref(src->src_caps));
 	default:
 		return false;
 	}
@@ -115,13 +113,13 @@ static bool mp_src_negotiate(struct mp_src *src)
 	}
 
 	/* Query the peer's capabilities */
-	mp_query_init_caps(&caps_query, src->src_caps);
+	mp_query_init_caps(&caps_query, mp_caps_ref(src->src_caps));
 	if (!mp_pad_query(src->srcpad.peer, &caps_query)) {
 		mp_query_clear(&caps_query);
 		return false;
 	}
 
-	common_caps = mp_caps_ref(mp_query_get_caps(&caps_query));
+	common_caps = mp_query_get_caps(&caps_query);
 	mp_query_clear(&caps_query);
 	if (common_caps == NULL) {
 		return false;
@@ -139,7 +137,7 @@ static bool mp_src_negotiate(struct mp_src *src)
 	fixated_caps = mp_caps_fixate(src->srcpad.caps);
 
 	/* Push a caps event downstream */
-	mp_event_init_caps(&caps_event, fixated_caps);
+	mp_event_init_caps(&caps_event, mp_caps_ref(fixated_caps));
 
 	ret = mp_pad_send_event(src->srcpad.peer, &caps_event);
 	mp_event_clear(&caps_event);
@@ -158,7 +156,7 @@ static bool mp_src_negotiate(struct mp_src *src)
 	}
 
 	/* Query the peer's allocation proposal */
-	mp_query_init_allocation(&alloc_query, src->srcpad.caps);
+	mp_query_init_allocation(&alloc_query, mp_caps_ref(src->srcpad.caps));
 	if (!mp_pad_query(src->srcpad.peer, &alloc_query)) {
 		mp_query_clear(&alloc_query);
 		return false;
