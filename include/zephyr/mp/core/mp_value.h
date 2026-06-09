@@ -18,6 +18,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <zephyr/sys/slist.h>
+
 #include <zephyr/mp/core/mp_object.h>
 
 /**
@@ -62,10 +64,19 @@ enum mp_value_type {
 
 /**
  * @brief Base mp_value structure
+ *
+ * Values are intrusive: they embed the list node used to chain them, either as
+ * a field of a @ref mp_structure or as an element of a @ref MP_TYPE_LIST value.
+ * A value belongs to at most one such container at a time, so a single node and
+ * key are sufficient and no separate wrapper allocation is needed.
  */
 struct mp_value {
 	/** Type of value, see @ref mp_value_type */
 	enum mp_value_type type;
+	/** Field id when stored as a @ref mp_structure field (unused otherwise) */
+	uint8_t field_id;
+	/** Intrusive node used to chain the value in a structure or a list */
+	sys_snode_t node;
 };
 
 /**

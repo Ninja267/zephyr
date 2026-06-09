@@ -56,3 +56,38 @@ config MP_CAPSFILTER
 config MP_NET_BUF_POOL_COUNT
 	int "Number of buffers can be handled at the same time for the whole pipeline"
 	default 1
+
+# Caps object pools
+#
+# Caps, structures and values are small, short-lived objects that are created
+# and destroyed frequently during caps negotiation. They are served from these
+# statically sized pools rather than the system heap, providing deterministic,
+# fragmentation-free, bounded allocation suitable for embedded targets. Size
+# them for the worst-case set of caps that can coexist at once.
+
+config MP_CAPS_POOL_SIZE
+	int "Maximum number of caps objects"
+	default 8
+	help
+	  Number of preallocated mp_caps blocks. Caps are reference counted and
+	  several typically coexist during negotiation (element caps, query caps,
+	  intersection and fixation results, ...). Allocation never touches the
+	  system heap.
+
+config MP_STRUCTURE_POOL_SIZE
+	int "Maximum number of caps structure objects"
+	default 8
+	help
+	  Number of preallocated mp_structure blocks. Each caps holds one or more
+	  structures (one per supported media format), and structures also back
+	  query and event metadata. Size this for the total number of structures
+	  that can coexist at once.
+
+config MP_VALUE_POOL_SIZE
+	int "Maximum number of value objects"
+	default 32
+	help
+	  Number of preallocated mp_value blocks. A value describes a single
+	  field (a format, a dimension, a range, a list element, ...) and is
+	  shared by all caps, structures, queries and events. Size this for the
+	  most complex set of caps that can coexist during negotiation.

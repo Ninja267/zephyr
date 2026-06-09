@@ -73,12 +73,19 @@
 /**
  * @struct mp_structure
  * @brief Dynamic structure for holding named fields and values.
+ *
+ * Fields are @ref mp_value instances chained directly through their own
+ * intrusive node, so no per-field wrapper is allocated. The structure itself
+ * is also intrusive: it embeds the node used to chain it in a @ref mp_caps
+ * (unused when the structure is standalone).
  */
 struct mp_structure {
-	/** List of fields in the structure */
+	/** List of field values in the structure (chained by mp_value.node) */
 	sys_slist_t fields;
 	/** Media type ID of the structure */
 	uint8_t media_type_id;
+	/** Intrusive node used to chain the structure in a @ref mp_caps */
+	sys_snode_t node;
 };
 
 /**
