@@ -52,9 +52,11 @@ bool mp_bus_post(struct mp_bus *bus, struct mp_message *message)
 		reply = mp_bus_sync_handler(bus, message);
 	}
 
-	/* Step 2: Put message to FIFO if not dropped */
+	/* Step 2: Put message to FIFO if not dropped, destroy it otherwise */
 	if (reply != MP_BUS_DROP) {
 		k_fifo_put(&bus->fifo, message);
+	} else {
+		mp_message_destroy(message);
 	}
 
 	return true;
@@ -99,13 +101,10 @@ void mp_bus_flush(struct mp_bus *bus)
 	}
 }
 
-void mp_bus_add_sync_listener(struct mp_bus *bus, callback_fn cb, enum mp_message_type type,
-			      void *user_data)
+void mp_bus_add_sync_listener(struct mp_bus *bus, struct mp_bus_sync_listener *listener,
+			      callback_fn cb, enum mp_message_type type, void *user_data)
 {
-
-	struct mp_bus_sync_listener *listener = k_malloc(sizeof(struct mp_bus_sync_listener));
-
-	__ASSERT_NO_MSG(listener != NULL);
+	__ASSERT_NO_MSG(bus != NULL && listener != NULL);
 	listener->cb = cb;
 	listener->filter_type = type;
 	listener->user_data = user_data;
@@ -116,5 +115,4 @@ void mp_bus_remove_sync_listener(struct mp_bus *bus, struct mp_bus_sync_listener
 {
 	__ASSERT_NO_MSG(bus != NULL && listener != NULL);
 	sys_slist_find_and_remove(&bus->sync_listeners, &listener->node);
-	k_free(listener);
 }

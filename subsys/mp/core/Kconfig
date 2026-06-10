@@ -91,3 +91,15 @@ config MP_VALUE_POOL_SIZE
 	  field (a format, a dimension, a range, a list element, ...) and is
 	  shared by all caps, structures, queries and events. Size this for the
 	  most complex set of caps that can coexist during negotiation.
+
+config MP_MESSAGE_POOL_SIZE
+	int "Maximum number of in-flight bus messages"
+	default 8
+	help
+	  Number of preallocated mp_message blocks. A message stays allocated
+	  from its creation until it is consumed: popped from the bus and
+	  destroyed by the application, dropped by a sync listener, or
+	  discarded by a flush. Size this for the maximum number of messages
+	  that can be pending on all buses at once; when the pool is
+	  exhausted, mp_message_new() returns NULL and the notification is
+	  dropped.
