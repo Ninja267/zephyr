@@ -32,10 +32,18 @@
  */
 struct mp_bus {
 	/**
-	 * FIFO queue used to store messages that are not handled by any
-	 * listener and can manually get using the mp_bus_pop
+	 * Message queue used to store messages that are not handled by any
+	 * listener and can be manually retrieved using mp_bus_pop. Only
+	 * pointers are queued: the message payload is never copied, nor is
+	 * the message memory touched by the kernel.
 	 */
-	struct k_fifo fifo;
+	struct k_msgq msgq;
+	/**
+	 * Ring storage for the queued message pointers. Sized to the message
+	 * pool so the queue can never overflow: there can never be more
+	 * pending messages than the pool holds.
+	 */
+	struct mp_message *ring[CONFIG_MP_MESSAGE_POOL_SIZE];
 	/**
 	 * List of listeners registered to the bus, the message will be
 	 * delivered to these listeners first
@@ -84,7 +92,8 @@ struct mp_bus_sync_listener {
  */
 static inline void mp_bus_init(struct mp_bus *bus)
 {
-	k_fifo_init(&bus->fifo);
+	k_msgq_init(&bus->msgq, (char *)bus->ring, sizeof(struct mp_message *),
+		    CONFIG_MP_MESSAGE_POOL_SIZE);
 	sys_slist_init(&bus->sync_listeners);
 }
 

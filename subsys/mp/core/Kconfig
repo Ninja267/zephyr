@@ -103,3 +103,6 @@ config MP_MESSAGE_POOL_SIZE
 	  that can be pending on all buses at once; when the pool is
 	  exhausted, mp_message_new() returns NULL and the notification is
 	  dropped.
+
+	  This also sizes the message queue ring embedded in each bus (one
+	  pointer per message), so a bus queue can never overflow.

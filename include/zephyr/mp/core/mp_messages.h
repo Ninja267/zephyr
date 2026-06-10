@@ -43,11 +43,6 @@ enum mp_message_type {
  * Message structure used to notify application
  */
 struct mp_message {
-	/** Reserved for use by k_fifo while the message is queued on a bus.
-	 * Must be the first member: k_fifo uses the first word of a queued
-	 * item as its linked-list pointer.
-	 */
-	void *fifo_reserved;
 	enum mp_message_type type; /**< type of message */
 	struct mp_object *src;     /**< (nullable) object originating message */
 	uint32_t timestamp;        /**< Creation time of message */
