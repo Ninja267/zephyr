@@ -32,10 +32,18 @@
  */
 struct mp_bus {
 	/**
-	 * FIFO queue used to store messages that are not handled by any
-	 * listener and can manually get using the mp_bus_pop
+	 * Message queue used to store messages that are not handled by any
+	 * listener and can be manually retrieved using mp_bus_pop. Only
+	 * pointers are queued: the message payload is never copied, nor is
+	 * the message memory touched by the kernel.
 	 */
-	struct k_fifo fifo;
+	struct k_msgq msgq;
+	/**
+	 * Ring storage for the queued message pointers. Sized to the message
+	 * pool so the queue can never overflow: there can never be more
+	 * pending messages than the pool holds.
+	 */
+	struct mp_message *ring[CONFIG_MP_MESSAGE_POOL_SIZE];
 	/**
 	 * List of listeners registered to the bus, the message will be
 	 * delivered to these listeners first
@@ -46,17 +54,25 @@ struct mp_bus {
 /**
  * @brief Callback function type for bus message listeners.
  *
+ * The message is owned by the bus: the callback must not destroy it. If any
+ * listener returns true, the bus drops the message (destroying it) instead
+ * of queuing it.
+ *
  * @param message Pointer to the received message.
  * @param data    User-defined data passed during listener registration.
  *
- * @retval true  Message was handled.
- * @retval false Message was not handled.
+ * @retval true  Message was handled, drop it.
+ * @retval false Message was not handled, queue it.
  */
 typedef bool (*callback_fn)(struct mp_message *message, void *data);
 
 /**
  * @struct mp_bus_sync_listener
  * Structure representing a synchronous listener on the message bus.
+ *
+ * Storage is provided by the caller (typically static or part of the
+ * application's state) and must remain valid while the listener is
+ * registered. The structure is initialized by @ref mp_bus_add_sync_listener.
  */
 struct mp_bus_sync_listener {
 	/** Callback function for message handling */
@@ -76,7 +92,8 @@ struct mp_bus_sync_listener {
  */
 static inline void mp_bus_init(struct mp_bus *bus)
 {
-	k_fifo_init(&bus->fifo);
+	k_msgq_init(&bus->msgq, (char *)bus->ring, sizeof(struct mp_message *),
+		    CONFIG_MP_MESSAGE_POOL_SIZE);
 	sys_slist_init(&bus->sync_listeners);
 }
 
@@ -126,16 +143,24 @@ struct mp_message *mp_bus_pop_msg(struct mp_bus *bus, enum mp_message_type type)
 /**
  * Add a synchronous listener to the bus.
  *
+ * The listener storage is provided by the caller and must remain valid until
+ * the listener is removed with @ref mp_bus_remove_sync_listener. No memory is
+ * allocated.
+ *
  * @param bus Pointer to the struct mp_bus
+ * @param listener Pointer to the caller-provided listener to initialize and register
  * @param cb Callback function to invoke when a matching message is received
  * @param type Message type to listen for
  * @param user_data User-defined data passed to the callback
  */
-void mp_bus_add_sync_listener(struct mp_bus *bus, callback_fn cb, enum mp_message_type type,
-			      void *user_data);
+void mp_bus_add_sync_listener(struct mp_bus *bus, struct mp_bus_sync_listener *listener,
+			      callback_fn cb, enum mp_message_type type, void *user_data);
 
 /**
  * Remove a synchronous listener from the bus.
+ *
+ * The listener storage is owned by the caller and may be reused or released
+ * after this call returns.
  *
  * @param bus Pointer to the struct mp_bus
  * @param listener Pointer to the listener to remove

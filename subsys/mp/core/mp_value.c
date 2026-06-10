@@ -10,6 +10,8 @@
 
 #include <zephyr/mp/core/mp_value.h>
 
+#include "mp_pool.h"
+
 LOG_MODULE_REGISTER(mp_value, CONFIG_MP_LOG_LEVEL);
 
 #define MP_VALUE(value)                      ((struct mp_value *)value)
@@ -108,10 +110,14 @@ struct mp_value_fraction_range {
 	struct mp_value_fraction min, max, step;
 };
 
-struct mp_value_node {
-	struct mp_value *value;
-	sys_snode_t node;
-};
+/* Largest value variant; every value is served from a single fixed-size pool. */
+#define MP_VALUE_BLOCK_SIZE                                                                         \
+	MAX(sizeof(struct mp_value_simple),                                                        \
+	    MAX(sizeof(struct mp_value_range),                                                     \
+		MAX(sizeof(struct mp_value_fraction),                                              \
+		    MAX(sizeof(struct mp_value_fraction_range), sizeof(struct mp_value_list)))))
+
+MP_POOL_DEFINE_SZ(mp_value_pool, MP_VALUE_BLOCK_SIZE, CONFIG_MP_VALUE_POOL_SIZE);
 
 static const size_t mp_value_type_sizes[MP_TYPE_COUNT] = {
 	[MP_TYPE_NONE] = sizeof(struct mp_value_simple),
@@ -334,7 +340,7 @@ struct mp_value *mp_value_new_empty(enum mp_value_type type)
 		return NULL;
 	}
 
-	value = k_calloc(1, mp_value_type_sizes[type]);
+	value = mp_pool_calloc(&mp_value_pool, mp_value_type_sizes[type]);
 	if (value == NULL) {
 		LOG_ERR("Failed to allocate memory for mp_value type %d", type);
 		return NULL;
@@ -350,14 +356,17 @@ struct mp_value *mp_value_new_empty(enum mp_value_type type)
 
 void mp_value_destroy(struct mp_value *value)
 {
-	struct mp_value_node *value_node;
+	struct mp_value *item;
+
+	if (value == NULL) {
+		return;
+	}
 
 	if (value->type == MP_TYPE_LIST) {
 		while (!sys_slist_is_empty(&MP_VALUE_LIST(value)->v_list)) {
-			value_node = CONTAINER_OF(sys_slist_get(&MP_VALUE_LIST(value)->v_list),
-						  struct mp_value_node, node);
-			mp_value_destroy(value_node->value);
-			k_free(value_node);
+			item = CONTAINER_OF(sys_slist_get(&MP_VALUE_LIST(value)->v_list),
+					    struct mp_value, node);
+			mp_value_destroy(item);
 		}
 	}
 
@@ -365,7 +374,7 @@ void mp_value_destroy(struct mp_value *value)
 		mp_object_unref(MP_VALUE_SIMPLE(value)->v_obj);
 	}
 
-	k_free(value);
+	mp_pool_free(&mp_value_pool, value);
 }
 
 struct mp_value *mp_value_new(enum mp_value_type type, ...)
@@ -395,16 +404,23 @@ struct mp_value *mp_value_new_va_list(enum mp_value_type type, va_list *args)
 static void mp_value_copy(struct mp_value *dst, const struct mp_value *src)
 {
 	if (src->type == MP_TYPE_LIST) {
-		struct mp_value_node *v_node;
+		struct mp_value *item;
 
-		SYS_SLIST_FOR_EACH_CONTAINER(&MP_VALUE_LIST(src)->v_list, v_node, node) {
-			mp_value_list_append(dst, mp_value_duplicate(v_node->value));
+		SYS_SLIST_FOR_EACH_CONTAINER(&MP_VALUE_LIST(src)->v_list, item, node) {
+			mp_value_list_append(dst, mp_value_duplicate(item));
 		}
 	} else if (src->type == MP_TYPE_OBJECT) {
 		MP_VALUE_SIMPLE(dst)->v_obj = MP_VALUE_SIMPLE(src)->v_obj;
 		mp_object_ref(MP_VALUE_SIMPLE(dst)->v_obj);
 	} else {
-		memcpy(dst, src, mp_value_type_sizes[src->type]);
+		/*
+		 * Copy only the type-specific payload, leaving dst's type and
+		 * intrusive linkage (set by mp_value_new_empty) untouched.
+		 */
+		size_t payload_off = sizeof(struct mp_value);
+
+		memcpy((uint8_t *)dst + payload_off, (const uint8_t *)src + payload_off,
+		       mp_value_type_sizes[src->type] - payload_off);
 	}
 }
 
@@ -423,29 +439,24 @@ struct mp_value *mp_value_duplicate(const struct mp_value *value)
 
 void mp_value_list_append(struct mp_value *list, struct mp_value *append_value)
 {
-	struct mp_value_node *node;
-
 	__ASSERT_NO_MSG(append_value != NULL && list != NULL);
-	node = k_malloc(sizeof(struct mp_value_node));
-	__ASSERT_NO_MSG(node != NULL);
-	node->value = append_value;
-	sys_slist_append(&MP_VALUE_LIST(list)->v_list, &node->node);
+
+	/* The value is chained directly through its own intrusive node. */
+	sys_slist_append(&MP_VALUE_LIST(list)->v_list, &append_value->node);
 }
 
 struct mp_value *mp_value_list_get(const struct mp_value *list, int index)
 {
 	sys_snode_t *node;
-	struct mp_value_node *value_node = NULL;
 	int count = 0;
 
 	SYS_SLIST_FOR_EACH_NODE((sys_slist_t *)&MP_VALUE_LIST(list)->v_list, node) {
 		if (count++ == index) {
-			value_node = CONTAINER_OF(node, struct mp_value_node, node);
-			break;
+			return CONTAINER_OF(node, struct mp_value, node);
 		}
 	}
 
-	return value_node ? value_node->value : NULL;
+	return NULL;
 }
 
 bool mp_value_list_is_empty(const struct mp_value *list)
@@ -579,7 +590,7 @@ static int mp_value_list_compare(const struct mp_value *list1, const struct mp_v
 	int size1 = mp_value_list_get_size(list1);
 	int size2 = mp_value_list_get_size(list1);
 	int count_matched = 0;
-	struct mp_value_node *v_node1, *v_node2;
+	struct mp_value *v_node1, *v_node2;
 
 	if (list1->type != MP_TYPE_LIST || list2->type != MP_TYPE_LIST) {
 		return MP_VALUE_COMPARE_FAILED;
@@ -592,7 +603,7 @@ static int mp_value_list_compare(const struct mp_value *list1, const struct mp_v
 	SYS_SLIST_FOR_EACH_CONTAINER((sys_slist_t *)&MP_VALUE_LIST(list1)->v_list, v_node1, node) {
 		SYS_SLIST_FOR_EACH_CONTAINER((sys_slist_t *)&MP_VALUE_LIST(list2)->v_list, v_node2,
 					     node) {
-			if (mp_value_compare(v_node1->value, v_node2->value) == MP_VALUE_EQUAL) {
+			if (mp_value_compare(v_node1, v_node2) == MP_VALUE_EQUAL) {
 				count_matched++;
 			}
 		}
@@ -731,7 +742,7 @@ struct mp_value *mp_value_intersect_list(const struct mp_value *list,
 {
 	struct mp_value *intersect_value = NULL;
 	struct mp_value *intersect_list = NULL;
-	struct mp_value_node *v_node1, *v_node2;
+	struct mp_value *v_node1, *v_node2;
 
 	if (list == NULL || compare_val == NULL || compare_val->type == MP_TYPE_NONE) {
 		return NULL;
@@ -747,25 +758,24 @@ struct mp_value *mp_value_intersect_list(const struct mp_value *list,
 		case MP_TYPE_UINT_FRACTION:
 		case MP_TYPE_INT_FRACTION:
 		case MP_TYPE_STRING:
-			if (mp_value_compare(compare_val, v_node1->value) == MP_VALUE_EQUAL) {
+			if (mp_value_compare(compare_val, v_node1) == MP_VALUE_EQUAL) {
 				intersect_value = mp_value_duplicate(compare_val);
 			}
 			break;
 		case MP_TYPE_INT_RANGE:
 		case MP_TYPE_UINT_RANGE:
-			intersect_value = mp_value_intersect_int_range(compare_val, v_node1->value);
+			intersect_value = mp_value_intersect_int_range(compare_val, v_node1);
 			break;
 		case MP_TYPE_UINT_FRACTION_RANGE:
 		case MP_TYPE_INT_FRACTION_RANGE:
 			intersect_value =
-				mp_value_intersect_fraction_range(compare_val, v_node1->value);
+				mp_value_intersect_fraction_range(compare_val, v_node1);
 			break;
 		case MP_TYPE_LIST:
 			SYS_SLIST_FOR_EACH_CONTAINER(
 				(sys_slist_t *)&MP_VALUE_LIST(compare_val)->v_list, v_node2, node) {
-				if (mp_value_compare(v_node1->value, v_node2->value) ==
-				    MP_VALUE_EQUAL) {
-					intersect_value = mp_value_duplicate(v_node2->value);
+				if (mp_value_compare(v_node1, v_node2) == MP_VALUE_EQUAL) {
+					intersect_value = mp_value_duplicate(v_node2);
 					break;
 				}
 			}
@@ -880,13 +890,12 @@ static inline void mp_value_print_fraction_range(const struct mp_value *value)
 
 static inline void mp_value_print_list(const struct mp_value *value)
 {
-	struct mp_value_node *value_node;
+	struct mp_value *item;
 
 	printk("{");
-	SYS_SLIST_FOR_EACH_CONTAINER((sys_slist_t *)&MP_VALUE_LIST(value)->v_list, value_node,
-				     node) {
-		mp_value_print(value_node->value, false);
-		if (sys_slist_peek_next(&value_node->node) != NULL) {
+	SYS_SLIST_FOR_EACH_CONTAINER((sys_slist_t *)&MP_VALUE_LIST(value)->v_list, item, node) {
+		mp_value_print(item, false);
+		if (sys_slist_peek_next(&item->node) != NULL) {
 
 			printk(", ");
 		}

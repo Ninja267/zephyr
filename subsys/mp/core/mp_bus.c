@@ -52,9 +52,19 @@ bool mp_bus_post(struct mp_bus *bus, struct mp_message *message)
 		reply = mp_bus_sync_handler(bus, message);
 	}
 
-	/* Step 2: Put message to FIFO if not dropped */
-	if (reply != MP_BUS_DROP) {
-		k_fifo_put(&bus->fifo, message);
+	/* Step 2: Destroy the message if a listener consumed it */
+	if (reply == MP_BUS_DROP) {
+		mp_message_destroy(message);
+		return true;
+	}
+
+	/* Step 3: Queue the message pointer, the payload is not copied.
+	 * The queue is sized to the message pool so this cannot fail, but
+	 * never lose a pooled message should the sizes ever diverge.
+	 */
+	if (k_msgq_put(&bus->msgq, &message, K_NO_WAIT) != 0) {
+		mp_message_destroy(message);
+		return false;
 	}
 
 	return true;
@@ -64,18 +74,18 @@ struct mp_message *mp_bus_pop_msg(struct mp_bus *bus, enum mp_message_type type)
 {
 	__ASSERT_NO_MSG(bus != NULL);
 
-	struct mp_message *message = NULL;
+	struct mp_message *message;
 
-	while ((message = k_fifo_get(&bus->fifo, K_FOREVER)) != NULL) {
+	while (k_msgq_get(&bus->msgq, &message, K_FOREVER) == 0) {
 		if (message->type & type) {
-			break;
+			return message;
 		}
 
 		/* Discard unmatched message */
 		mp_message_destroy(message);
 	}
 
-	return message;
+	return NULL;
 }
 
 struct mp_message *mp_bus_pop(struct mp_bus *bus)
@@ -85,7 +95,13 @@ struct mp_message *mp_bus_pop(struct mp_bus *bus)
 
 struct mp_message *mp_bus_peek(struct mp_bus *bus)
 {
-	return bus != NULL ? k_fifo_peek_head(&bus->fifo) : NULL;
+	struct mp_message *message;
+
+	if (bus == NULL || k_msgq_peek(&bus->msgq, &message) != 0) {
+		return NULL;
+	}
+
+	return message;
 }
 void mp_bus_flush(struct mp_bus *bus)
 {
@@ -93,19 +109,18 @@ void mp_bus_flush(struct mp_bus *bus)
 
 	__ASSERT_NO_MSG(bus != NULL);
 
-	/** Drain the FIFO and free all messages */
-	while ((message = k_fifo_get(&bus->fifo, K_NO_WAIT)) != NULL) {
+	/** Drain the queue and free all messages. k_msgq_purge() would
+	 * discard the pointers without destroying the pooled messages.
+	 */
+	while (k_msgq_get(&bus->msgq, &message, K_NO_WAIT) == 0) {
 		mp_message_destroy(message);
 	}
 }
 
-void mp_bus_add_sync_listener(struct mp_bus *bus, callback_fn cb, enum mp_message_type type,
-			      void *user_data)
+void mp_bus_add_sync_listener(struct mp_bus *bus, struct mp_bus_sync_listener *listener,
+			      callback_fn cb, enum mp_message_type type, void *user_data)
 {
-
-	struct mp_bus_sync_listener *listener = k_malloc(sizeof(struct mp_bus_sync_listener));
-
-	__ASSERT_NO_MSG(listener != NULL);
+	__ASSERT_NO_MSG(bus != NULL && listener != NULL);
 	listener->cb = cb;
 	listener->filter_type = type;
 	listener->user_data = user_data;
@@ -116,5 +131,4 @@ void mp_bus_remove_sync_listener(struct mp_bus *bus, struct mp_bus_sync_listener
 {
 	__ASSERT_NO_MSG(bus != NULL && listener != NULL);
 	sys_slist_find_and_remove(&bus->sync_listeners, &listener->node);
-	k_free(listener);
 }
