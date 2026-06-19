@@ -77,12 +77,14 @@ void mp_structure_destroy(struct mp_structure *structure)
 int mp_structure_append(struct mp_structure *structure, uint8_t field_id, struct mp_value *value)
 {
 	struct mp_structure_field *field;
+	sys_snode_t *node;
 
 	if (structure == NULL || value == NULL) {
 		return -EINVAL;
 	}
 
-	SYS_SLIST_FOR_EACH_CONTAINER(&structure->fields, field, node) {
+	SYS_SLIST_FOR_EACH_NODE(&structure->fields, node) {
+		field = CONTAINER_OF(node, struct mp_structure_field, node);
 		if (field->field_id == field_id) {
 			return -EEXIST;
 		}
