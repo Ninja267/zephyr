@@ -28,6 +28,10 @@ static int mp_transform_client_chainfn(struct mp_pad *pad, struct net_buf *in_bu
 		return -ENOTSUP;
 	}
 
+	if (in_buf == NULL || out_buf == NULL) {
+		return -EINVAL;
+	}
+
 	if (transform->outpool == NULL || transform->outpool->acquire_buffer == NULL) {
 		return -EINVAL;
 	}
@@ -37,6 +41,11 @@ static int mp_transform_client_chainfn(struct mp_pad *pad, struct net_buf *in_bu
 
 	if (transform->outpool->acquire_buffer(transform->outpool, out_buf) != 0) {
 		LOG_ERR("Failed to acquire an output buffer");
+		return -ENOMEM;
+	}
+
+	if (*out_buf == NULL) {
+		LOG_ERR("Acquired a NULL output buffer");
 		return -ENOMEM;
 	}
 

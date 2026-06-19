@@ -21,28 +21,26 @@ int mp_src_set_property(struct mp_object *obj, uint32_t key, const void *val)
 {
 	struct mp_src *src = (struct mp_src *)obj;
 
-	switch (key) {
-	case PROP_NUM_BUFS:
-		src->num_buffers = (uint32_t)(uintptr_t)val;
-		return 0;
-	default:
+	if (key != PROP_NUM_BUFS) {
 		LOG_ERR("Property %d is unknown", key);
 		return -ENOTSUP;
 	}
+
+	src->num_buffers = (uint32_t)(uintptr_t)val;
+
+	return 0;
 }
 
 int mp_src_get_property(struct mp_object *obj, uint32_t key, void *val)
 {
 	struct mp_src *src = (struct mp_src *)obj;
 
-	switch (key) {
-	case PROP_NUM_BUFS:
-		*(uint32_t *)val = src->num_buffers;
-		break;
-	default:
+	if (key != PROP_NUM_BUFS) {
 		LOG_ERR("Property %d is unknown", key);
 		return -ENOTSUP;
 	}
+
+	*(uint32_t *)val = src->num_buffers;
 
 	return 0;
 }
@@ -76,29 +74,28 @@ static int mp_src_query(struct mp_pad *pad, struct mp_dispatch *query)
 	struct mp_caps *intersect_caps;
 	struct mp_caps *query_caps;
 
-	switch (query->type) {
-	case MP_DISPATCH_CAPS:
-		query_caps = mp_dispatch_get_caps(query);
-		if (query_caps != NULL) {
-			intersect_caps = mp_caps_intersect(src->src_caps, query_caps);
-			if (intersect_caps == NULL) {
-				return -ENODATA;
-			}
-			if (mp_caps_is_empty(intersect_caps)) {
-				mp_caps_unref(intersect_caps);
-				return -ENODATA;
-			}
-			ret = mp_dispatch_set_caps(query, intersect_caps);
-			mp_caps_unref(intersect_caps);
-			mp_caps_unref(query_caps);
-		} else {
-			ret = mp_dispatch_set_caps(query, src->src_caps);
-		}
-
-		return ret;
-	default:
+	if (query->type != MP_DISPATCH_CAPS) {
 		return -ENOTSUP;
 	}
+
+	query_caps = mp_dispatch_get_caps(query);
+	if (query_caps != NULL) {
+		intersect_caps = mp_caps_intersect(src->src_caps, query_caps);
+		if (intersect_caps == NULL) {
+			return -ENODATA;
+		}
+		if (mp_caps_is_empty(intersect_caps)) {
+			mp_caps_unref(intersect_caps);
+			return -ENODATA;
+		}
+		ret = mp_dispatch_set_caps(query, intersect_caps);
+		mp_caps_unref(intersect_caps);
+		mp_caps_unref(query_caps);
+	} else {
+		ret = mp_dispatch_set_caps(query, src->src_caps);
+	}
+
+	return ret;
 }
 
 static int mp_src_negotiate(struct mp_src *src)
@@ -185,8 +182,7 @@ enum mp_state_change_return mp_src_change_state(struct mp_element *self,
 	enum mp_state_change_return ret = MP_STATE_CHANGE_SUCCESS;
 	int pool_ret;
 
-	switch (transition) {
-	case MP_STATE_CHANGE_READY_TO_PAUSED:
+	if (transition == MP_STATE_CHANGE_READY_TO_PAUSED) {
 		/* Perform negotiation */
 		if (mp_src_negotiate(src) < 0) {
 			LOG_ERR("Negotiation failed");
@@ -207,10 +203,6 @@ enum mp_state_change_return mp_src_change_state(struct mp_element *self,
 			LOG_ERR("Failed to start source buffer pool");
 			return MP_STATE_CHANGE_FAILURE;
 		}
-
-		break;
-	default:
-		break;
 	}
 
 	return ret;

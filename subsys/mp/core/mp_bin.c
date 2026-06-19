@@ -91,6 +91,32 @@ static int mp_bin_find_element_index(struct mp_element *elements[], int num,
 	return -1;
 }
 
+/*
+ * For each linked pad in pad_list, find the peer's container element and
+ * decrement its topological-sort degree, marking that one of its dependencies
+ * has been processed.
+ */
+static void mp_bin_decrement_peer_degrees(sys_dlist_t *pad_list, struct mp_element *elements[],
+					  int degree[], int num_elements)
+{
+	struct mp_object *pad_obj;
+
+	SYS_DLIST_FOR_EACH_CONTAINER(pad_list, pad_obj, node) {
+		struct mp_pad *pad = (struct mp_pad *)pad_obj;
+
+		if (pad->peer == NULL) {
+			continue;
+		}
+
+		struct mp_element *peer_elem = (struct mp_element *)pad->peer->object.container;
+		int idx = mp_bin_find_element_index(elements, num_elements, peer_elem);
+
+		if (idx >= 0 && degree[idx] > 0) {
+			degree[idx]--;
+		}
+	}
+}
+
 enum mp_state_change_return mp_bin_change_state_func(struct mp_element *self,
 						     enum mp_state_change transition)
 {
@@ -175,24 +201,8 @@ enum mp_state_change_return mp_bin_change_state_func(struct mp_element *self,
 			 */
 			sys_dlist_t *pad_list =
 				is_up_transition ? &elements[i]->sinkpads : &elements[i]->srcpads;
-			struct mp_object *pad_obj;
 
-			SYS_DLIST_FOR_EACH_CONTAINER(pad_list, pad_obj, node) {
-				struct mp_pad *pad = (struct mp_pad *)pad_obj;
-
-				if (pad->peer == NULL) {
-					continue;
-				}
-
-				struct mp_element *peer_elem =
-					(struct mp_element *)pad->peer->object.container;
-				int idx = mp_bin_find_element_index(elements, num_elements,
-								    peer_elem);
-
-				if (idx >= 0 && degree[idx] > 0) {
-					degree[idx]--;
-				}
-			}
+			mp_bin_decrement_peer_degrees(pad_list, elements, degree, num_elements);
 		}
 
 		if (!found) {
